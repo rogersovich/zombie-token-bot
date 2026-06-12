@@ -104,10 +104,21 @@ bot.command('screen', async (ctx) => {
 });
 
 // Launch Bot
-bot.launch().then(() => {
-  console.log('🚀 Solana Zombie Token Monitor Telegram Bot is running...');
-  console.log(`[Scheduler] Registered cron cycle: "${SECRETS.CRON_SCHEDULE}"`);
+bot.launch().then(async () => {
+  const startupTime = formatToWIB(Date.now());
   
+  console.log('\n================================================================');
+  console.log('🚀 SOLANA ZOMBIE TOKEN MONITOR BOT IS RUNNING');
+  console.log('================================================================');
+  console.log(`[System] Started at: ${startupTime}`);
+  console.log(`[System] Schedule: Run every 4 hours (${SECRETS.CRON_SCHEDULE})`);
+  console.log(`[Filter] Min ATH Mcap: $${CONFIG.minAthMcap.toLocaleString()}`);
+  console.log(`[Filter] Mcap Accumulation: $${CONFIG.minMcap.toLocaleString()} - $${CONFIG.maxMcap.toLocaleString()}`);
+  console.log(`[Filter] Min 24h Volume: $${CONFIG.minVolume24h.toLocaleString()}`);
+  console.log(`[Filter] Min Holders: ${CONFIG.minHolderCount.toLocaleString()}`);
+  console.log(`[Filter] Min Token Age: ${CONFIG.minTokenAgeDays} days`);
+  console.log('================================================================\n');
+
   // Register automated cron job (defaults to every 4 hours)
   cron.schedule(SECRETS.CRON_SCHEDULE, async () => {
     console.log('[Scheduler] Running automated cron task...');
