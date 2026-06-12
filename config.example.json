@@ -1,0 +1,8 @@
+{
+  "min_ath_mcap": 20000,
+  "min_mcap": 2000,
+  "max_mcap": 5000,
+  "min_volume_24h": 1000,
+  "min_holder_count": 100,
+  "min_token_age_days": 7
+}
