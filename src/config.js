@@ -30,10 +30,21 @@ try {
   };
 }
 
+const cronScreenMinutes = Number(appConfig.cron_screen_minutes ?? 240);
+
+// Helper to convert minutes to a valid cron pattern
+let generatedCron = '0 */4 * * *';
+if (cronScreenMinutes < 60) {
+  generatedCron = `*/${cronScreenMinutes} * * * *`;
+} else {
+  const hours = Math.floor(cronScreenMinutes / 60);
+  generatedCron = `0 */${hours} * * *`;
+}
+
 export const SECRETS = {
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
-  CRON_SCHEDULE: process.env.CRON_SCHEDULE || '0 */4 * * *',
+  CRON_SCHEDULE: generatedCron,
 };
 
 export const CONFIG = {
@@ -43,6 +54,7 @@ export const CONFIG = {
   minVolume24h: Number(appConfig.min_volume_24h ?? 1000),
   minHolderCount: Number(appConfig.min_holder_count ?? 100),
   minTokenAgeDays: Number(appConfig.min_token_age_days ?? 7),
+  cronScreenMinutes: cronScreenMinutes,
 };
 
 export default {

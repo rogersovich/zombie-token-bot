@@ -89,7 +89,7 @@ bot.start((ctx) => {
 });
 
 bot.command('status', (ctx) => {
-  const nextInfo = getNextCronOccurrence(SECRETS.CRON_SCHEDULE);
+  const nextInfo = getNextCronOccurrence(CONFIG.cronScreenMinutes);
 
   let status = `⚙️ *Konfigurasi Filter Saat Ini:*\n\n`;
   status += `• Minimal ATH Mcap: \`$${CONFIG.minAthMcap.toLocaleString()}\`\n`;
@@ -97,7 +97,7 @@ bot.command('status', (ctx) => {
   status += `• Minimal Volume 24 Jam: \`$${CONFIG.minVolume24h.toLocaleString()}\`\n`;
   status += `• Minimal Jumlah Holder: \`${CONFIG.minHolderCount.toLocaleString()}\`\n`;
   status += `• Minimal Umur Token: \`${CONFIG.minTokenAgeDays} hari\`\n\n`;
-  status += `🕒 *Jadwal Otomatis:* setiap 4 jam (\`${SECRETS.CRON_SCHEDULE}\`)\n`;
+  status += `🕒 *Jadwal Otomatis:* setiap \`${CONFIG.cronScreenMinutes} menit\` (\`${SECRETS.CRON_SCHEDULE}\`)\n`;
   status += `⏳ *Next Run:* \`${nextInfo.nextRunTimeWIB}\` (dalam *${nextInfo.remainingStr}*)\n`;
   ctx.replyWithMarkdown(status);
 });

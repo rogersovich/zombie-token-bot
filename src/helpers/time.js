@@ -49,26 +49,36 @@ export function hourDiff(a, b) {
 }
 
 /**
- * Calculates the next occurrence of a cron job matching "0 */N * * *"
+ * Calculates the next occurrence of a cron job matching "cronScreenMinutes"
  * and formats the result in WIB timezone along with remaining duration.
- * @param {string} cronExpression
+ * @param {number} cronScreenMinutes
  * @returns {{ nextRunTimeWIB: string, remainingStr: string }}
  */
-export function getNextCronOccurrence(cronExpression) {
-  let intervalHours = 4;
-  try {
-    const match = cronExpression.match(/0\s+\*\/(\d+)/);
-    if (match) {
-      intervalHours = parseInt(match[1], 10);
-    }
-  } catch (e) {}
-
+export function getNextCronOccurrence(cronScreenMinutes) {
   const now = dayjs(); // Local system time (e.g. UTC on VPS)
-  const currentHour = now.hour();
   
-  // Calculate next hour divisible by the interval
-  let nextHour = Math.floor(currentHour / intervalHours) * intervalHours + intervalHours;
-  let nextRun = now.hour(nextHour).minute(0).second(0).millisecond(0);
+  let nextRun;
+  
+  if (cronScreenMinutes < 60) {
+    const currentMinute = now.minute();
+    let nextMinute = Math.floor(currentMinute / cronScreenMinutes) * cronScreenMinutes + cronScreenMinutes;
+    
+    if (nextMinute >= 60) {
+      nextRun = now.add(1, 'hour').minute(nextMinute % 60).second(0).millisecond(0);
+    } else {
+      nextRun = now.minute(nextMinute).second(0).millisecond(0);
+    }
+  } else {
+    const intervalHours = Math.floor(cronScreenMinutes / 60);
+    const currentHour = now.hour();
+    let nextHour = Math.floor(currentHour / intervalHours) * intervalHours + intervalHours;
+    
+    if (nextHour >= 24) {
+      nextRun = now.add(1, 'day').hour(nextHour % 24).minute(0).second(0).millisecond(0);
+    } else {
+      nextRun = now.hour(nextHour).minute(0).second(0).millisecond(0);
+    }
+  }
   
   const diffMs = nextRun.diff(now);
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
