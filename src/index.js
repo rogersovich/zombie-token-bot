@@ -110,11 +110,15 @@ bot.command('screen', async (ctx) => {
 bot.launch().then(async () => {
   const startupTime = formatToWIB(Date.now());
   
+  const scheduleStr = CONFIG.cronScreenMinutes >= 60 
+    ? `${CONFIG.cronScreenMinutes / 60} hour(s)` 
+    : `${CONFIG.cronScreenMinutes} minute(s)`;
+
   console.log('\n================================================================');
   console.log('🚀 SOLANA ZOMBIE TOKEN MONITOR BOT IS RUNNING');
   console.log('================================================================');
   console.log(`[System] Started at: ${startupTime}`);
-  console.log(`[System] Schedule: Run every 4 hours (${SECRETS.CRON_SCHEDULE})`);
+  console.log(`[System] Schedule: Run every ${scheduleStr}`);
   console.log(`[Filter] Min ATH Mcap: $${CONFIG.minAthMcap.toLocaleString()}`);
   console.log(`[Filter] Mcap Accumulation: $${CONFIG.minMcap.toLocaleString()} - $${CONFIG.maxMcap.toLocaleString()}`);
   console.log(`[Filter] Min 24h Volume: $${CONFIG.minVolume24h.toLocaleString()}`);
