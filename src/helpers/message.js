@@ -22,6 +22,7 @@ export function buildSummaryMessage(tokens, totalCandidates) {
     message += `   • ATH Mcap: \`$${t.ath_mcap}\` (-${t.dump_percent}%)\n`;
     message += `   • Averages: 3D: \`$${t.avg_mcap_3d}\` | 7D: \`$${t.avg_mcap_7d}\` | 30D: \`$${t.avg_mcap_30d}\`\n`;
     message += `   • Max Tx Gap: \`${t.max_tx_gap_hours}h\` (Last: ${t.last_tx_time_wib})\n`;
+    message += `   • Largest Buy (7D): \`$${t.largest_buy_usd}\`\n`;
     message += `   • Socials: [Twitter](${t.twitter}) | [Website](${t.website})\n\n`;
   });
 

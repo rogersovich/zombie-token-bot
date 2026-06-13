@@ -29,6 +29,7 @@ async function main() {
         console.log(`   ATH Mcap: $${token.ath_mcap} (-${token.dump_percent}%)`);
         console.log(`   Averages: 3D: $${token.avg_mcap_3d} | 7D: $${token.avg_mcap_7d} | 30D: $${token.avg_mcap_30d}`);
         console.log(`   Max Tx Gap: ${token.max_tx_gap_hours} hours (Last Tx: ${token.last_tx_time_wib})`);
+        console.log(`   Largest Buy (7D): $${token.largest_buy_usd}`);
       });
 
       // Conditional Telegram sending if secrets are configured

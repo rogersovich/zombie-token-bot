@@ -5,5 +5,6 @@
   "min_volume_24h": 1000,
   "min_holder_count": 100,
   "min_token_age_days": 7,
-  "cron_screen_minutes": 240
+  "cron_screen_minutes": 240,
+  "min_largest_buy_usd": 5
 }

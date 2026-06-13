@@ -96,7 +96,8 @@ bot.command('status', (ctx) => {
   status += `• Rentang Mcap Akumulasi: \`$${CONFIG.minMcap.toLocaleString()}\` - \`$${CONFIG.maxMcap.toLocaleString()}\`\n`;
   status += `• Minimal Volume 24 Jam: \`$${CONFIG.minVolume24h.toLocaleString()}\`\n`;
   status += `• Minimal Jumlah Holder: \`${CONFIG.minHolderCount.toLocaleString()}\`\n`;
-  status += `• Minimal Umur Token: \`${CONFIG.minTokenAgeDays} hari\`\n\n`;
+  status += `• Minimal Umur Token: \`${CONFIG.minTokenAgeDays} hari\`\n`;
+  status += `• Minimal Pembelian Terbesar (7 Hari): \`$${CONFIG.minLargestBuyUsd.toLocaleString()}\`\n\n`;
   status += `🕒 *Jadwal Otomatis:* setiap \`${CONFIG.cronScreenMinutes} menit\`\n`;
   status += `⏳ *Next Run:* \`${nextInfo.nextRunTimeWIB}\` (dalam *${nextInfo.remainingStr}*)\n`;
   ctx.replyWithMarkdown(status);

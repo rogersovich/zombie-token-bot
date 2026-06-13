@@ -53,7 +53,7 @@ async function validateTransactionGap(address) {
   const weekTxs = allTxs.filter(tx => new Date(tx.timestamp).getTime() >= oneWeekAgo);
 
   if (weekTxs.length === 0) {
-    return { isValid: false, maxGapHours: 0, lastTxTime: null };
+    return { isValid: false, maxGapHours: 0, lastTxTime: null, largestBuyUsd: 0 };
   }
 
   // Sort transactions chronologically (oldest first)
@@ -69,7 +69,7 @@ async function validateTransactionGap(address) {
   
   if (gapToNow > 24) {
     // Inactive for more than 24 hours recently
-    return { isValid: false, maxGapHours: gapToNow, lastTxTime: mostRecentTx.timestamp };
+    return { isValid: false, maxGapHours: gapToNow, lastTxTime: mostRecentTx.timestamp, largestBuyUsd: 0 };
   }
   maxGapHours = gapToNow;
 
@@ -86,14 +86,18 @@ async function validateTransactionGap(address) {
     }
 
     if (gapHours > 24) {
-      return { isValid: false, maxGapHours, lastTxTime: mostRecentTx.timestamp };
+      return { isValid: false, maxGapHours, lastTxTime: mostRecentTx.timestamp, largestBuyUsd: 0 };
     }
   }
+
+  const weekBuys = weekTxs.filter(tx => tx.type === 'buy');
+  const largestBuyUsd = weekBuys.length > 0 ? Math.max(...weekBuys.map(tx => tx.usdVolume || 0)) : 0;
 
   return {
     isValid: true,
     maxGapHours,
-    lastTxTime: mostRecentTx.timestamp
+    lastTxTime: mostRecentTx.timestamp,
+    largestBuyUsd
   };
 }
 
@@ -246,10 +250,15 @@ export async function runScreening(maxTokensToProcess = null) {
         continue;
       }
 
-      // 4. Validate transaction gap (gap <= 24h)
+      // 4. Validate transaction gap (gap <= 24h) and largest buy USD
       const txValidation = await validateTransactionGap(address);
       if (!txValidation.isValid) {
         console.log(`[Monitor] Token ${token.symbol} transaction gap exceeds 24h. Skipping.`);
+        continue;
+      }
+
+      if (txValidation.largestBuyUsd < CONFIG.minLargestBuyUsd) {
+        console.log(`[Monitor] Token ${token.symbol} largest buy is $${txValidation.largestBuyUsd.toFixed(2)} (minimum $${CONFIG.minLargestBuyUsd} required). Skipping.`);
         continue;
       }
 
@@ -279,6 +288,7 @@ export async function runScreening(maxTokensToProcess = null) {
         avg_mcap_30d: formatMcap(mcAnalysis.avg30d),
         max_tx_gap_hours: txValidation.maxGapHours.toFixed(1),
         last_tx_time_wib: formatToWIB(txValidation.lastTxTime),
+        largest_buy_usd: txValidation.largestBuyUsd.toFixed(1),
         website: details.website || 'N/A',
         twitter: details.twitter || 'N/A'
       };
@@ -314,6 +324,7 @@ export async function runScreening(maxTokensToProcess = null) {
       { key: 'avg_mcap_30d', label: 'Avg Mcap 30D ($)' },
       { key: 'max_tx_gap_hours', label: 'Max Tx Gap (Hours)' },
       { key: 'last_tx_time_wib', label: 'Last Tx (WIB)' },
+      { key: 'largest_buy_usd', label: 'Largest Buy ($)' },
       { key: 'website', label: 'Website' },
       { key: 'twitter', label: 'Twitter' }
     ];

@@ -55,6 +55,7 @@ export const CONFIG = {
   minHolderCount: Number(appConfig.min_holder_count ?? 100),
   minTokenAgeDays: Number(appConfig.min_token_age_days ?? 7),
   cronScreenMinutes: cronScreenMinutes,
+  minLargestBuyUsd: Number(appConfig.min_largest_buy_usd ?? 5),
 };
 
 export default {
