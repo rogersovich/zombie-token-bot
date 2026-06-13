@@ -1,6 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { Telegraf } from 'telegraf';
+import { setupWibLogger } from './helpers/logger.js';
+
+// Initialize logging wrapper first
+setupWibLogger();
+
 import { SECRETS } from './config.js';
 import { runScreening } from './monitor.js';
 import { formatToWIB } from './helpers/time.js';
