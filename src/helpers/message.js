@@ -17,6 +17,7 @@ export function buildSummaryMessage(tokens, totalCandidates) {
   tokens.forEach((t, i) => {
     message += `${i + 1}. *${t.symbol}* (${t.name})\n`;
     message += `   • Address: \`${t.address}\`\n`;
+    message += `   • Age: \`${t.age_days} days\`\n`;
     message += `   • Current Mcap: \`$${t.current_mcap}\`\n`;
     message += `   • ATH Mcap: \`$${t.ath_mcap}\` (-${t.dump_percent}%)\n`;
     message += `   • Averages: 3D: \`$${t.avg_mcap_3d}\` | 7D: \`$${t.avg_mcap_7d}\` | 30D: \`$${t.avg_mcap_30d}\`\n`;
