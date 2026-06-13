@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { SECRETS, CONFIG } from './config.js';
 import { runScreening } from './monitor.js';
-import { formatToWIB, getNextCronOccurrence } from './helpers/time.js';
+import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
 import { buildSummaryMessage } from './helpers/message.js';
 
 // Setup validation
@@ -97,7 +97,7 @@ bot.command('status', (ctx) => {
   status += `• Minimal Volume 24 Jam: \`$${CONFIG.minVolume24h.toLocaleString()}\`\n`;
   status += `• Minimal Jumlah Holder: \`${CONFIG.minHolderCount.toLocaleString()}\`\n`;
   status += `• Minimal Umur Token: \`${CONFIG.minTokenAgeDays} hari\`\n\n`;
-  status += `🕒 *Jadwal Otomatis:* setiap \`${CONFIG.cronScreenMinutes} menit\` (\`${SECRETS.CRON_SCHEDULE}\`)\n`;
+  status += `🕒 *Jadwal Otomatis:* setiap \`${CONFIG.cronScreenMinutes} menit\`\n`;
   status += `⏳ *Next Run:* \`${nextInfo.nextRunTimeWIB}\` (dalam *${nextInfo.remainingStr}*)\n`;
   ctx.replyWithMarkdown(status);
 });
@@ -106,34 +106,56 @@ bot.command('screen', async (ctx) => {
   await executeScreeningAndSend(ctx);
 });
 
-// Launch Bot
-bot.launch().then(async () => {
-  const startupTime = formatToWIB(Date.now());
+// Start scheduler immediately (independently of bot.launch)
+const startupTime = formatToWIB(Date.now());
+
+const scheduleStr = CONFIG.cronScreenMinutes >= 60 
+  ? `${CONFIG.cronScreenMinutes / 60} hour(s)` 
+  : `${CONFIG.cronScreenMinutes} minute(s)`;
+
+console.log('\n================================================================');
+console.log('🚀 SOLANA ZOMBIE TOKEN MONITOR BOT IS RUNNING');
+console.log('================================================================');
+console.log(`[System] Started at: ${startupTime}`);
+console.log(`[System] Schedule: Run every ${scheduleStr}`);
+console.log(`[Filter] Min ATH Mcap: $${CONFIG.minAthMcap.toLocaleString()}`);
+console.log(`[Filter] Mcap Accumulation: $${CONFIG.minMcap.toLocaleString()} - $${CONFIG.maxMcap.toLocaleString()}`);
+console.log(`[Filter] Min 24h Volume: $${CONFIG.minVolume24h.toLocaleString()}`);
+console.log(`[Filter] Min Holders: ${CONFIG.minHolderCount.toLocaleString()}`);
+console.log(`[Filter] Min Token Age: ${CONFIG.minTokenAgeDays} days`);
+console.log('================================================================\n');
+
+// Calculate milliseconds remaining until the next aligned run
+const nextInfo = getNextCronOccurrence(CONFIG.cronScreenMinutes);
+
+// Format nextRunTimeWIB back to a dayjs object to get difference
+const nextRunTime = dayjs(nextInfo.nextRunTimeWIB.replace(' WIB', ''), 'YYYY-MM-DD HH:mm:ss');
+const delayMs = nextRunTime.diff(dayjs());
+
+console.log(`[Scheduler] Next run is aligned at ${nextInfo.nextRunTimeWIB}. Delaying first run by ${(delayMs / 1000).toFixed(0)} seconds...`);
+
+// First aligned run
+setTimeout(async () => {
+  console.log('[Scheduler] Running scheduled screening task (aligned)...');
+  await executeScreeningAndSend();
   
-  const scheduleStr = CONFIG.cronScreenMinutes >= 60 
-    ? `${CONFIG.cronScreenMinutes / 60} hour(s)` 
-    : `${CONFIG.cronScreenMinutes} minute(s)`;
-
-  console.log('\n================================================================');
-  console.log('🚀 SOLANA ZOMBIE TOKEN MONITOR BOT IS RUNNING');
-  console.log('================================================================');
-  console.log(`[System] Started at: ${startupTime}`);
-  console.log(`[System] Schedule: Run every ${scheduleStr}`);
-  console.log(`[Filter] Min ATH Mcap: $${CONFIG.minAthMcap.toLocaleString()}`);
-  console.log(`[Filter] Mcap Accumulation: $${CONFIG.minMcap.toLocaleString()} - $${CONFIG.maxMcap.toLocaleString()}`);
-  console.log(`[Filter] Min 24h Volume: $${CONFIG.minVolume24h.toLocaleString()}`);
-  console.log(`[Filter] Min Holders: ${CONFIG.minHolderCount.toLocaleString()}`);
-  console.log(`[Filter] Min Token Age: ${CONFIG.minTokenAgeDays} days`);
-  console.log('================================================================\n');
-
-  // Register automated cron job (defaults to every 4 hours)
-  cron.schedule(SECRETS.CRON_SCHEDULE, async () => {
-    console.log('[Scheduler] Running automated cron task...');
+  // Set up recurring interval runs
+  setInterval(async () => {
+    console.log('[Scheduler] Running scheduled screening task (interval)...');
     await executeScreeningAndSend();
+  }, CONFIG.cronScreenMinutes * 60 * 1000);
+
+}, delayMs);
+
+// Launch Telegram Bot Listener in parallel
+console.log('[Telegram] Connecting to Telegram API...');
+bot.launch()
+  .then(() => {
+    console.log('[Telegram] Bot listener connected and polling.');
+  })
+  .catch(err => {
+    console.error('[Telegram] Failed to start Telegram listener (will retry on next event):', err.message);
   });
-}).catch(err => {
-  console.error('Failed to start Telegram Bot:', err.message);
-});
 
 // Graceful stop handlers
 process.once('SIGINT', () => bot.stop('SIGINT'));
