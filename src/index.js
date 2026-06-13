@@ -2,11 +2,6 @@ import { Telegraf } from 'telegraf';
 import cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
-import { setupWibLogger } from './helpers/logger.js';
-
-// Initialize logging wrapper first
-setupWibLogger();
-
 import { SECRETS, CONFIG } from './config.js';
 import { runScreening } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence } from './helpers/time.js';
