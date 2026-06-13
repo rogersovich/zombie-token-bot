@@ -12,11 +12,11 @@ async function main() {
   console.log('--------------------------------------------------');
 
   try {
-    const { results, csvPath } = await runScreening(3);
+    const { results, csvPath, totalCandidates } = await runScreening(3);
     
     console.log('--------------------------------------------------');
     console.log(`✅ Test execution completed successfully!`);
-    console.log(`Found: ${results.length} tokens`);
+    console.log(`Found: ${results.length} tokens (screened from total ${totalCandidates} candidates)`);
     
     if (results.length > 0) {
       console.log(`CSV written to: ${csvPath}`);
@@ -46,11 +46,11 @@ async function main() {
           source: fs.readFileSync(csvPath),
           filename: path.basename(csvPath)
         }, {
-          caption: `🧪 Test Run: ${results.length} zombie token(s) found.`
+          caption: `🧪 Test Run: ${results.length} dari ${totalCandidates} token ditemukan.`
         });
 
         // Send summary text message
-        const textDetails = buildSummaryMessage(results);
+        const textDetails = buildSummaryMessage(results, totalCandidates);
         await bot.telegram.sendMessage(SECRETS.TELEGRAM_CHAT_ID, `🧪 *[TEST RUN SUMMARY]*\n\n` + textDetails, {
           parse_mode: 'Markdown',
           disable_web_page_preview: true

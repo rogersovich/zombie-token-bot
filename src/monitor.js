@@ -292,7 +292,7 @@ export async function runScreening(maxTokensToProcess = null) {
 
     if (matchedTokens.length === 0) {
       console.log('[Monitor] Screening completed. No matching tokens found.');
-      return { results: [], csvPath: null };
+      return { results: [], csvPath: null, totalCandidates: trending.length };
     }
 
     // Generate CSV output file
@@ -323,7 +323,8 @@ export async function runScreening(maxTokensToProcess = null) {
 
     return {
       results: matchedTokens,
-      csvPath: csvFilePath
+      csvPath: csvFilePath,
+      totalCandidates: trending.length
     };
 
   } catch (error) {

@@ -48,11 +48,44 @@ export function hourDiff(a, b) {
   return Math.abs(t1.diff(t2, 'hour', true));
 }
 
+/**
+ * Calculates the next occurrence of a cron job matching "0 */N * * *"
+ * and formats the result in WIB timezone along with remaining duration.
+ * @param {string} cronExpression
+ * @returns {{ nextRunTimeWIB: string, remainingStr: string }}
+ */
+export function getNextCronOccurrence(cronExpression) {
+  let intervalHours = 4;
+  try {
+    const match = cronExpression.match(/0\s+\*\/(\d+)/);
+    if (match) {
+      intervalHours = parseInt(match[1], 10);
+    }
+  } catch (e) {}
+
+  const now = dayjs(); // Local system time (e.g. UTC on VPS)
+  const currentHour = now.hour();
+  
+  // Calculate next hour divisible by the interval
+  let nextHour = Math.floor(currentHour / intervalHours) * intervalHours + intervalHours;
+  let nextRun = now.hour(nextHour).minute(0).second(0).millisecond(0);
+  
+  const diffMs = nextRun.diff(now);
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  return {
+    nextRunTimeWIB: nextRun.tz(WIB_TZ).format('YYYY-MM-DD HH:mm:ss [WIB]'),
+    remainingStr: `${diffHours} jam ${diffMins} menit`
+  };
+}
+
 export { dayjs };
 export default {
   dayjs,
   formatToWIB,
   nowWIB,
   nowWIBString,
-  hourDiff
+  hourDiff,
+  getNextCronOccurrence
 };

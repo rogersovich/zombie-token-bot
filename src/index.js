@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { SECRETS, CONFIG } from './config.js';
 import { runScreening } from './monitor.js';
-import { formatToWIB } from './helpers/time.js';
+import { formatToWIB, getNextCronOccurrence } from './helpers/time.js';
 import { buildSummaryMessage } from './helpers/message.js';
 
 // Setup validation
@@ -40,10 +40,10 @@ async function executeScreeningAndSend(ctx = null) {
     : console.log('[Cron] Starting automated screening cycle.');
 
   try {
-    const { results, csvPath } = await runScreening();
+    const { results, csvPath, totalCandidates } = await runScreening();
 
     if (results.length === 0) {
-      const emptyText = '🔍 Screening selesai: Tidak ada token mati suri baru yang memenuhi kriteria saat ini.';
+      const emptyText = `🔍 Screening selesai: Tidak ada token baru yang memenuhi kriteria saat ini.\n(Dipantau dari total: \`${totalCandidates || 0}\` kandidat)`;
       if (ctx) {
         await ctx.reply(emptyText);
       } else {
@@ -57,11 +57,11 @@ async function executeScreeningAndSend(ctx = null) {
       source: fs.readFileSync(csvPath),
       filename: path.basename(csvPath)
     }, {
-      caption: `📁 Laporan Screening Token: ${results.length} token ditemukan.`
+      caption: `📁 Laporan Screening: ${results.length} dari ${totalCandidates} token ditemukan.`
     });
 
     // Send summary text details
-    const textDetails = buildSummaryMessage(results);
+    const textDetails = buildSummaryMessage(results, totalCandidates);
     await bot.telegram.sendMessage(targetId, textDetails, { parse_mode: 'Markdown', disable_web_page_preview: true });
 
     if (ctx && statusMsg) {
@@ -89,13 +89,16 @@ bot.start((ctx) => {
 });
 
 bot.command('status', (ctx) => {
+  const nextInfo = getNextCronOccurrence(SECRETS.CRON_SCHEDULE);
+
   let status = `⚙️ *Konfigurasi Filter Saat Ini:*\n\n`;
   status += `• Minimal ATH Mcap: \`$${CONFIG.minAthMcap.toLocaleString()}\`\n`;
   status += `• Rentang Mcap Akumulasi: \`$${CONFIG.minMcap.toLocaleString()}\` - \`$${CONFIG.maxMcap.toLocaleString()}\`\n`;
   status += `• Minimal Volume 24 Jam: \`$${CONFIG.minVolume24h.toLocaleString()}\`\n`;
   status += `• Minimal Jumlah Holder: \`${CONFIG.minHolderCount.toLocaleString()}\`\n`;
-  status += `• Minimal Umur Token: \`${CONFIG.minTokenAgeDays} hari\`\n`;
-  status += `• Jadwal Otomatis: setiap 4 jam (\`${SECRETS.CRON_SCHEDULE}\`)\n`;
+  status += `• Minimal Umur Token: \`${CONFIG.minTokenAgeDays} hari\`\n\n`;
+  status += `🕒 *Jadwal Otomatis:* setiap 4 jam (\`${SECRETS.CRON_SCHEDULE}\`)\n`;
+  status += `⏳ *Next Run:* \`${nextInfo.nextRunTimeWIB}\` (dalam *${nextInfo.remainingStr}*)\n`;
   ctx.replyWithMarkdown(status);
 });
 

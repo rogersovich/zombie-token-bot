@@ -3,11 +3,16 @@ import { formatToWIB } from './time.js';
 /**
  * Builds the summary text message for a list of tokens.
  * @param {Array<Object>} tokens
+ * @param {number} [totalCandidates]
  * @returns {string}
  */
-export function buildSummaryMessage(tokens) {
-  let message = `🎯 *Solana Zombie Tokens Found (${tokens.length})*\n`;
-  message += `Time: \`${formatToWIB(Date.now())}\`\n\n`;
+export function buildSummaryMessage(tokens, totalCandidates) {
+  let message = `🎯 *Tokens Found (${tokens.length})*\n`;
+  message += `Time: \`${formatToWIB(Date.now())}\`\n`;
+  if (totalCandidates !== undefined) {
+    message += `Filtered from: \`${totalCandidates}\` candidates\n`;
+  }
+  message += `\n`;
 
   tokens.forEach((t, i) => {
     message += `${i + 1}. *${t.symbol}* (${t.name})\n`;
