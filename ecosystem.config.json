@@ -1,0 +1,12 @@
+{
+  "apps": [
+    {
+      "name": "solana-zombie-bot",
+      "script": "./src/index.js",
+      "time": true,
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  ]
+}
