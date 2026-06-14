@@ -22,7 +22,10 @@ export function buildSummaryMessage(tokens, totalCandidates) {
     message += `   • ATH Mcap: \`$${t.ath_mcap}\` (-${t.dump_percent}%)\n`;
     message += `   • Averages: 3D: \`$${t.avg_mcap_3d}\` | 7D: \`$${t.avg_mcap_7d}\` | 30D: \`$${t.avg_mcap_30d}\`\n`;
     message += `   • Max Tx Gap: \`${t.max_tx_gap_hours}h\` (Last: ${t.last_tx_time_wib})\n`;
-    message += `   • Largest Buy (7D): \`$${t.largest_buy_usd}\`\n`;
+    message += `   • Tx Count (24H): \`${t.buy_count_24h}x Buy | ${t.sell_count_24h}x Sell\`\n`;
+    message += `   • Large Buy (1D): \`$${t.largest_buy_usd_1d}\` (Wallet: \`${t.largest_buy_wallet_1d}\` | Time: \`${t.largest_buy_time_wib_1d}\`)\n`;
+    message += `   • Large Buy (3D): \`$${t.largest_buy_usd_3d}\` (Wallet: \`${t.largest_buy_wallet_3d}\` | Time: \`${t.largest_buy_time_wib_3d}\`)\n`;
+    message += `   • Large Buy (7D): \`$${t.largest_buy_usd}\` (Wallet: \`${t.largest_buy_wallet}\` | Time: \`${t.largest_buy_time_wib}\`)\n`;
     message += `   • Socials: [Twitter](${t.twitter}) | [Website](${t.website})\n\n`;
   });
 
@@ -44,7 +47,10 @@ export function buildSingleCheckMessage(t, config) {
   message += `• ATH Mcap: \`$${t.ath_mcap}\` (-${t.dump_percent}%) ${t.passesFilters.ath ? '✅' : `❌ (min $${(config.minAthMcap/1000).toFixed(1)}k)`}\n`;
   message += `• Averages: 3D: \`$${t.avg_mcap_3d}\` | 7D: \`$${t.avg_mcap_7d}\` | 30D: \`$${t.avg_mcap_30d}\`\n`;
   message += `• Max Tx Gap: \`${t.max_tx_gap_hours}h\` (Last: ${t.last_tx_time_wib}) ${t.passesFilters.gap ? '✅' : '❌ (>24h gap)'}\n`;
-  message += `• Largest Buy (7D): \`$${t.largest_buy_usd}\` ${t.passesFilters.largestBuy ? '✅' : `❌ (min $${config.minLargestBuyUsd})`}\n`;
+  message += `• Tx Count (24H): \`${t.buy_count_24h}x Buy | ${t.sell_count_24h}x Sell\`\n`;
+  message += `• Large Buy (1D): \`$${t.largest_buy_usd_1d}\` (Wallet: \`${t.largest_buy_wallet_1d}\` | Time: \`${t.largest_buy_time_wib_1d}\`)\n`;
+  message += `• Large Buy (3D): \`$${t.largest_buy_usd_3d}\` (Wallet: \`${t.largest_buy_wallet_3d}\` | Time: \`${t.largest_buy_time_wib_3d}\`)\n`;
+  message += `• Large Buy (7D): \`$${t.largest_buy_usd}\` (Wallet: \`${t.largest_buy_wallet}\` | Time: \`${t.largest_buy_time_wib}\`) ${t.passesFilters.largestBuy ? '✅' : `❌ (min $${config.minLargestBuyUsd})`}\n`;
   message += `• Socials: [Twitter](${t.twitter}) | [Website](${t.website})\n\n`;
   
   const allPassed = Object.values(t.passesFilters).every(v => v);

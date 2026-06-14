@@ -53,7 +53,22 @@ async function validateTransactionGap(address) {
   const weekTxs = allTxs.filter(tx => new Date(tx.timestamp).getTime() >= oneWeekAgo);
 
   if (weekTxs.length === 0) {
-    return { isValid: false, maxGapHours: 0, lastTxTime: null, largestBuyUsd: 0 };
+    return {
+      isValid: false,
+      maxGapHours: 0,
+      lastTxTime: null,
+      largestBuyUsd: 0,
+      largestBuyWallet: 'N/A',
+      largestBuyTime: null,
+      largestBuyUsd3d: 0,
+      largestBuyWallet3d: 'N/A',
+      largestBuyTime3d: null,
+      largestBuyUsd1d: 0,
+      largestBuyWallet1d: 'N/A',
+      largestBuyTime1d: null,
+      buyCount24h: 0,
+      sellCount24h: 0
+    };
   }
 
   // Sort transactions chronologically (oldest first)
@@ -61,6 +76,7 @@ async function validateTransactionGap(address) {
 
   let maxGapHours = 0;
   const now = Date.now();
+  let gapIsValid = true;
 
   // Check gap between current time and the most recent transaction
   const mostRecentTx = weekTxs[weekTxs.length - 1];
@@ -68,8 +84,7 @@ async function validateTransactionGap(address) {
   const gapToNow = (now - lastTxTimeMs) / (1000 * 60 * 60);
   
   if (gapToNow > 24) {
-    // Inactive for more than 24 hours recently
-    return { isValid: false, maxGapHours: gapToNow, lastTxTime: mostRecentTx.timestamp, largestBuyUsd: 0 };
+    gapIsValid = false;
   }
   maxGapHours = gapToNow;
 
@@ -86,18 +101,87 @@ async function validateTransactionGap(address) {
     }
 
     if (gapHours > 24) {
-      return { isValid: false, maxGapHours, lastTxTime: mostRecentTx.timestamp, largestBuyUsd: 0 };
+      gapIsValid = false;
     }
   }
 
+  const nowMs = Date.now();
+  const threeDaysAgoMs = nowMs - 3 * 24 * 60 * 60 * 1000;
+  const oneDayAgoMs = nowMs - 24 * 60 * 60 * 1000;
+
+  // Filter buys for different intervals
   const weekBuys = weekTxs.filter(tx => tx.type === 'buy');
-  const largestBuyUsd = weekBuys.length > 0 ? Math.max(...weekBuys.map(tx => tx.usdVolume || 0)) : 0;
+  const threeDaysBuys = weekTxs.filter(tx => tx.type === 'buy' && new Date(tx.timestamp).getTime() >= threeDaysAgoMs);
+  const oneDayBuys = weekTxs.filter(tx => tx.type === 'buy' && new Date(tx.timestamp).getTime() >= oneDayAgoMs);
+
+  // 24h buy/sell counts
+  const dayTxs = weekTxs.filter(tx => new Date(tx.timestamp).getTime() >= oneDayAgoMs);
+  const buyCount24h = dayTxs.filter(tx => tx.type === 'buy').length;
+  const sellCount24h = dayTxs.filter(tx => tx.type === 'sell').length;
+
+  // Calculate 7D Largest Buy
+  let largestBuyUsd = 0;
+  let largestBuyWallet = 'N/A';
+  let largestBuyTime = null;
+  if (weekBuys.length > 0) {
+    let maxBuyTx = weekBuys[0];
+    for (let i = 1; i < weekBuys.length; i++) {
+      if ((weekBuys[i].usdVolume || 0) > (maxBuyTx.usdVolume || 0)) {
+        maxBuyTx = weekBuys[i];
+      }
+    }
+    largestBuyUsd = maxBuyTx.usdVolume || 0;
+    largestBuyWallet = maxBuyTx.traderAddress || 'N/A';
+    largestBuyTime = maxBuyTx.timestamp || null;
+  }
+
+  // Calculate 3D Largest Buy
+  let largestBuyUsd3d = 0;
+  let largestBuyWallet3d = 'N/A';
+  let largestBuyTime3d = null;
+  if (threeDaysBuys.length > 0) {
+    let maxBuyTx = threeDaysBuys[0];
+    for (let i = 1; i < threeDaysBuys.length; i++) {
+      if ((threeDaysBuys[i].usdVolume || 0) > (maxBuyTx.usdVolume || 0)) {
+        maxBuyTx = threeDaysBuys[i];
+      }
+    }
+    largestBuyUsd3d = maxBuyTx.usdVolume || 0;
+    largestBuyWallet3d = maxBuyTx.traderAddress || 'N/A';
+    largestBuyTime3d = maxBuyTx.timestamp || null;
+  }
+
+  // Calculate 1D Largest Buy
+  let largestBuyUsd1d = 0;
+  let largestBuyWallet1d = 'N/A';
+  let largestBuyTime1d = null;
+  if (oneDayBuys.length > 0) {
+    let maxBuyTx = oneDayBuys[0];
+    for (let i = 1; i < oneDayBuys.length; i++) {
+      if ((oneDayBuys[i].usdVolume || 0) > (maxBuyTx.usdVolume || 0)) {
+        maxBuyTx = oneDayBuys[i];
+      }
+    }
+    largestBuyUsd1d = maxBuyTx.usdVolume || 0;
+    largestBuyWallet1d = maxBuyTx.traderAddress || 'N/A';
+    largestBuyTime1d = maxBuyTx.timestamp || null;
+  }
 
   return {
-    isValid: true,
+    isValid: gapIsValid,
     maxGapHours,
     lastTxTime: mostRecentTx.timestamp,
-    largestBuyUsd
+    largestBuyUsd,
+    largestBuyWallet,
+    largestBuyTime,
+    largestBuyUsd3d,
+    largestBuyWallet3d,
+    largestBuyTime3d,
+    largestBuyUsd1d,
+    largestBuyWallet1d,
+    largestBuyTime1d,
+    buyCount24h,
+    sellCount24h
   };
 }
 
@@ -289,6 +373,16 @@ export async function runScreening(maxTokensToProcess = null) {
         max_tx_gap_hours: txValidation.maxGapHours.toFixed(1),
         last_tx_time_wib: formatToWIB(txValidation.lastTxTime),
         largest_buy_usd: txValidation.largestBuyUsd.toFixed(1),
+        largest_buy_wallet: txValidation.largestBuyWallet,
+        largest_buy_time_wib: formatToWIB(txValidation.largestBuyTime),
+        largest_buy_usd_3d: txValidation.largestBuyUsd3d.toFixed(1),
+        largest_buy_wallet_3d: txValidation.largestBuyWallet3d,
+        largest_buy_time_wib_3d: formatToWIB(txValidation.largestBuyTime3d),
+        largest_buy_usd_1d: txValidation.largestBuyUsd1d.toFixed(1),
+        largest_buy_wallet_1d: txValidation.largestBuyWallet1d,
+        largest_buy_time_wib_1d: formatToWIB(txValidation.largestBuyTime1d),
+        buy_count_24h: txValidation.buyCount24h,
+        sell_count_24h: txValidation.sellCount24h,
         website: details.website || 'N/A',
         twitter: details.twitter || 'N/A'
       };
@@ -324,7 +418,17 @@ export async function runScreening(maxTokensToProcess = null) {
       { key: 'avg_mcap_30d', label: 'Avg Mcap 30D ($)' },
       { key: 'max_tx_gap_hours', label: 'Max Tx Gap (Hours)' },
       { key: 'last_tx_time_wib', label: 'Last Tx (WIB)' },
-      { key: 'largest_buy_usd', label: 'Largest Buy ($)' },
+      { key: 'largest_buy_usd', label: 'Largest Buy 7D ($)' },
+      { key: 'largest_buy_wallet', label: 'Largest Buy 7D Wallet' },
+      { key: 'largest_buy_time_wib', label: 'Largest Buy 7D Time (WIB)' },
+      { key: 'largest_buy_usd_3d', label: 'Largest Buy 3D ($)' },
+      { key: 'largest_buy_wallet_3d', label: 'Largest Buy 3D Wallet' },
+      { key: 'largest_buy_time_wib_3d', label: 'Largest Buy 3D Time (WIB)' },
+      { key: 'largest_buy_usd_1d', label: 'Largest Buy 1D ($)' },
+      { key: 'largest_buy_wallet_1d', label: 'Largest Buy 1D Wallet' },
+      { key: 'largest_buy_time_wib_1d', label: 'Largest Buy 1D Time (WIB)' },
+      { key: 'buy_count_24h', label: 'Buy Count 24H' },
+      { key: 'sell_count_24h', label: 'Sell Count 24H' },
       { key: 'website', label: 'Website' },
       { key: 'twitter', label: 'Twitter' }
     ];
@@ -385,6 +489,16 @@ export async function screenSingleToken(address) {
     max_tx_gap_hours: txValidation.maxGapHours.toFixed(1),
     last_tx_time_wib: formatToWIB(txValidation.lastTxTime),
     largest_buy_usd: txValidation.largestBuyUsd.toFixed(1),
+    largest_buy_wallet: txValidation.largestBuyWallet,
+    largest_buy_time_wib: formatToWIB(txValidation.largestBuyTime),
+    largest_buy_usd_3d: txValidation.largestBuyUsd3d.toFixed(1),
+    largest_buy_wallet_3d: txValidation.largestBuyWallet3d,
+    largest_buy_time_wib_3d: formatToWIB(txValidation.largestBuyTime3d),
+    largest_buy_usd_1d: txValidation.largestBuyUsd1d.toFixed(1),
+    largest_buy_wallet_1d: txValidation.largestBuyWallet1d,
+    largest_buy_time_wib_1d: formatToWIB(txValidation.largestBuyTime1d),
+    buy_count_24h: txValidation.buyCount24h,
+    sell_count_24h: txValidation.sellCount24h,
     website: details.website || 'N/A',
     twitter: details.twitter || 'N/A',
     passesFilters: {
