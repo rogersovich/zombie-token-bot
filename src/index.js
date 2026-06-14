@@ -9,6 +9,7 @@ import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage } from '.
 import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice } from './db.js';
 import jupApi from './jupApi.js';
 import { monitorOrders } from './orderMonitor.js';
+import { formatMcap } from './helpers/format.js';
 
 // Setup validation
 const isTokenConfigured = SECRETS.TELEGRAM_BOT_TOKEN && 
@@ -195,7 +196,7 @@ bot.command('buy', async (ctx) => {
     successMsg += `🔗 *Address:* \`${address}\`\n`;
     successMsg += `💵 *Initial Capital:* \`$${buyAmount.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
     successMsg += `💰 *Entry Price:* \`$${priceUsd.toFixed(8)}\`\n`;
-    successMsg += `📊 *Market Cap:* \`$${mcap.toLocaleString(undefined, { maximumFractionDigits: 2 })}\`\n`;
+    successMsg += `📊 *Market Cap:* \`$${formatMcap(mcap)}\`\n`;
     successMsg += `🚦 *Type:* \`dryrun\`\n`;
     successMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
 

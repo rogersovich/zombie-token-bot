@@ -1,4 +1,5 @@
 import { formatToWIB } from './time.js';
+import { formatMcap } from './format.js';
 
 /**
  * Builds the summary text message for a list of tokens.
@@ -90,8 +91,8 @@ export function buildPnLMessage(orders, config = null) {
     message += `${i + 1}. *${o.symbol}* (${o.name}) \`[${o.type.toUpperCase()}]\`\n`;
     message += `   • Address: \`${o.address}\`\n`;
     message += `   • Initial Capital: \`$${modalUsd.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
-    message += `   • Buy Price: \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${o.mcap ? o.mcap.toLocaleString(undefined, { maximumFractionDigits: 0 }) : 'N/A'}\`)\n`;
-    message += `   • Current Price: \`$${currentPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? currentMcap.toLocaleString(undefined, { maximumFractionDigits: 0 }) : 'N/A'}\`)\n`;
+    message += `   • Buy Price: \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${o.mcap ? formatMcap(o.mcap) : 'N/A'}\`)\n`;
+    message += `   • Current Price: \`$${currentPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? formatMcap(currentMcap) : 'N/A'}\`)\n`;
     message += `   • Current Value: \`$${currentValueUsd.toFixed(2)}\`\n`;
     message += `   • PnL: ${statusEmoji} \`${sign}${priceChangePct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)${tpMarker}\n`;
     message += `   • Purchased At: \`${formatToWIB(o.created_at)}\`\n`;
