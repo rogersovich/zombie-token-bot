@@ -3,9 +3,9 @@ import cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
 import { SECRETS, CONFIG } from './config.js';
-import { runScreening } from './monitor.js';
+import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
-import { buildSummaryMessage } from './helpers/message.js';
+import { buildSummaryMessage, buildSingleCheckMessage } from './helpers/message.js';
 
 // Setup validation
 const isTokenConfigured = SECRETS.TELEGRAM_BOT_TOKEN && 
@@ -105,6 +105,35 @@ bot.command('status', (ctx) => {
 
 bot.command('screen', async (ctx) => {
   await executeScreeningAndSend(ctx);
+});
+
+bot.command('check', async (ctx) => {
+  const args = ctx.message.text.split(' ').slice(1);
+  const address = args[0]?.trim();
+
+  if (!address) {
+    return ctx.replyWithMarkdown('⚠️ *Format salah.*\nSilakan sertakan contract address.\n\nContoh:\n`/check 3ne9QxYRHybHK1LVmtEG8rH7L6nJ56W8KVWeB8ZGpump`');
+  }
+
+  const statusMsg = await ctx.reply(`🔍 Mengecek koin: \`${address}\`...`);
+
+  try {
+    const info = await screenSingleToken(address);
+    if (!info) {
+      await ctx.reply(`❌ Koin tidak ditemukan di Jupiter dengan contract address tersebut.`);
+      return;
+    }
+
+    const textDetails = buildSingleCheckMessage(info, CONFIG);
+    await ctx.replyWithMarkdown(textDetails, { disable_web_page_preview: true });
+  } catch (error) {
+    console.error('[App] Single check error:', error.message);
+    await ctx.reply(`❌ Terjadi kesalahan saat memeriksa koin: ${error.message}`);
+  } finally {
+    if (statusMsg) {
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+    }
+  }
 });
 
 // Start scheduler immediately (independently of bot.launch)

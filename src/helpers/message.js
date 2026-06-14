@@ -29,6 +29,31 @@ export function buildSummaryMessage(tokens, totalCandidates) {
   return message;
 }
 
+/**
+ * Builds the text message summary for a single checked token.
+ * @param {Object} t
+ * @param {Object} config
+ * @returns {string}
+ */
+export function buildSingleCheckMessage(t, config) {
+  let message = `🔍 *Hasil Check Token*\n`;
+  message += `*${t.symbol}* (${t.name})\n\n`;
+  message += `• Address: \`${t.address}\`\n`;
+  message += `• Age: \`${t.age_days} days\` ${t.passesFilters.age ? '✅' : `❌ (min ${config.minTokenAgeDays}d)`}\n`;
+  message += `• Current Mcap: \`$${t.current_mcap}\` ${t.passesFilters.mcap ? '✅' : `❌ (range $${(config.minMcap/1000).toFixed(1)}k - $${(config.maxMcap/1000).toFixed(1)}k)`}\n`;
+  message += `• ATH Mcap: \`$${t.ath_mcap}\` (-${t.dump_percent}%) ${t.passesFilters.ath ? '✅' : `❌ (min $${(config.minAthMcap/1000).toFixed(1)}k)`}\n`;
+  message += `• Averages: 3D: \`$${t.avg_mcap_3d}\` | 7D: \`$${t.avg_mcap_7d}\` | 30D: \`$${t.avg_mcap_30d}\`\n`;
+  message += `• Max Tx Gap: \`${t.max_tx_gap_hours}h\` (Last: ${t.last_tx_time_wib}) ${t.passesFilters.gap ? '✅' : '❌ (>24h gap)'}\n`;
+  message += `• Largest Buy (7D): \`$${t.largest_buy_usd}\` ${t.passesFilters.largestBuy ? '✅' : `❌ (min $${config.minLargestBuyUsd})`}\n`;
+  message += `• Socials: [Twitter](${t.twitter}) | [Website](${t.website})\n\n`;
+  
+  const allPassed = Object.values(t.passesFilters).every(v => v);
+  message += `🚦 *Status:* ${allPassed ? '🟢 *PASSED* (Koin ini memenuhi semua kriteria)' : '🔴 *FAILED* (Ada kriteria yang tidak terpenuhi)'}`;
+
+  return message;
+}
+
 export default {
-  buildSummaryMessage
+  buildSummaryMessage,
+  buildSingleCheckMessage
 };

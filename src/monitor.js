@@ -344,6 +344,60 @@ export async function runScreening(maxTokensToProcess = null) {
   }
 }
 
+/**
+ * Analyzes and screens a single token by its contract address.
+ * Bypasses database alerted checks and database writes.
+ * @param {string} address
+ * @returns {Promise<Object|null>}
+ */
+export async function screenSingleToken(address) {
+  console.log(`[Monitor] Manual single token check initiated for: ${address}`);
+  
+  const details = await jupApi.searchAsset(address);
+  if (!details) {
+    return null;
+  }
+
+  // Calculate token age
+  const createdAtMs = new Date(details.createdAt).getTime();
+  const ageDays = (Date.now() - createdAtMs) / (1000 * 60 * 60 * 24);
+
+  // Validate transaction gap
+  const txValidation = await validateTransactionGap(address);
+
+  // Historical charts analysis (ATH & averages)
+  const mcAnalysis = await analyzeMarketCap(address, ageDays);
+
+  const currentMcap = details.mcap || 0;
+  const dumpPercent = mcAnalysis.athMcap > 0 ? ((1 - currentMcap / mcAnalysis.athMcap) * 100) : 0;
+
+  return {
+    address: address,
+    name: details.name,
+    symbol: details.symbol,
+    age_days: ageDays.toFixed(1),
+    current_mcap: formatMcap(currentMcap),
+    ath_mcap: formatMcap(mcAnalysis.athMcap),
+    dump_percent: dumpPercent.toFixed(1),
+    avg_mcap_3d: formatMcap(mcAnalysis.avg3d),
+    avg_mcap_7d: formatMcap(mcAnalysis.avg7d),
+    avg_mcap_30d: formatMcap(mcAnalysis.avg30d),
+    max_tx_gap_hours: txValidation.maxGapHours.toFixed(1),
+    last_tx_time_wib: formatToWIB(txValidation.lastTxTime),
+    largest_buy_usd: txValidation.largestBuyUsd.toFixed(1),
+    website: details.website || 'N/A',
+    twitter: details.twitter || 'N/A',
+    passesFilters: {
+      age: ageDays > CONFIG.minTokenAgeDays,
+      mcap: currentMcap >= CONFIG.minMcap && currentMcap <= CONFIG.maxMcap,
+      gap: txValidation.isValid,
+      ath: mcAnalysis.athMcap >= CONFIG.minAthMcap,
+      largestBuy: txValidation.largestBuyUsd >= CONFIG.minLargestBuyUsd
+    }
+  };
+}
+
 export default {
-  runScreening
+  runScreening,
+  screenSingleToken
 };
