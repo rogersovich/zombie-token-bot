@@ -6,5 +6,8 @@
   "min_holder_count": 100,
   "min_token_age_days": 7,
   "cron_screen_minutes": 240,
-  "min_largest_buy_usd": 5
+  "min_largest_buy_usd": 5,
+  "cron_order_monitor_hours": 1,
+  "default_buy_amount_usd": 5,
+  "min_take_profit_percent": 50
 }

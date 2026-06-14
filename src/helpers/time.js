@@ -86,7 +86,7 @@ export function getNextCronOccurrence(cronScreenMinutes) {
   
   return {
     nextRunTimeWIB: nextRun.tz(WIB_TZ).format('YYYY-MM-DD HH:mm:ss [WIB]'),
-    remainingStr: `${diffHours} jam ${diffMins} menit`
+    remainingStr: `${diffHours} hour(s) ${diffMins} minute(s)`
   };
 }
 

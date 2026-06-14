@@ -56,6 +56,9 @@ export const CONFIG = {
   minTokenAgeDays: Number(appConfig.min_token_age_days ?? 7),
   cronScreenMinutes: cronScreenMinutes,
   minLargestBuyUsd: Number(appConfig.min_largest_buy_usd ?? 5),
+  cronOrderMonitorHours: Number(appConfig.cron_order_monitor_hours ?? 1),
+  defaultBuyAmountUsd: Number(appConfig.default_buy_amount_usd ?? 5),
+  minTakeProfitPercent: Number(appConfig.min_take_profit_percent ?? 50),
 };
 
 export default {

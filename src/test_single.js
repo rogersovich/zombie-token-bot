@@ -1,6 +1,7 @@
 import { screenSingleToken } from './monitor.js';
 import { buildSingleCheckMessage } from './helpers/message.js';
 import { CONFIG } from './config.js';
+import jupApi from './jupApi.js';
 
 async function main() {
   const address = 'AKQsb5XKL7RohnLGWjRui5ArUYVSZWJ5VwDSa2EEpump';

@@ -9,8 +9,41 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS token_alerts (
     address TEXT PRIMARY KEY,
     alerted_at INTEGER NOT NULL
-  )
+  );
+  
+  CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    address TEXT NOT NULL,
+    symbol TEXT,
+    name TEXT,
+    price_usd REAL,
+    mcap REAL,
+    type TEXT DEFAULT 'dryrun',
+    created_at INTEGER NOT NULL,
+    current_price_usd REAL,
+    current_mcap REAL,
+    updated_at INTEGER,
+    buy_amount_usd REAL,
+    token_qty REAL
+  );
 `);
+
+// Alter existing tables if columns do not exist
+try {
+  db.exec('ALTER TABLE orders ADD COLUMN current_price_usd REAL');
+} catch (_) {}
+try {
+  db.exec('ALTER TABLE orders ADD COLUMN current_mcap REAL');
+} catch (_) {}
+try {
+  db.exec('ALTER TABLE orders ADD COLUMN updated_at INTEGER');
+} catch (_) {}
+try {
+  db.exec('ALTER TABLE orders ADD COLUMN buy_amount_usd REAL');
+} catch (_) {}
+try {
+  db.exec('ALTER TABLE orders ADD COLUMN token_qty REAL');
+} catch (_) {}
 
 /**
  * Checks if a token should be alerted.
@@ -38,6 +71,61 @@ export function markTokenAlerted(address) {
     VALUES (?, ?)
     ON CONFLICT(address) DO UPDATE SET alerted_at = excluded.alerted_at
   `).run(address, now);
+}
+
+/**
+ * Creates a mock/live order record in the database.
+ * @param {Object} order
+ * @param {string} order.address
+ * @param {string} order.symbol
+ * @param {string} order.name
+ * @param {number} order.price_usd
+ * @param {number} order.mcap
+ * @param {'dryrun'|'live'} [order.type='dryrun']
+ * @param {number} order.buy_amount_usd
+ * @param {number} order.token_qty
+ * @returns {number} The ID of the inserted order
+ */
+export function createOrder({ address, symbol, name, price_usd, mcap, type = 'dryrun', buy_amount_usd, token_qty }) {
+  const now = Date.now();
+  const info = db.prepare(`
+    INSERT INTO orders (address, symbol, name, price_usd, mcap, type, created_at, buy_amount_usd, token_qty)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(address, symbol, name, price_usd, mcap, type, now, buy_amount_usd, token_qty);
+  
+  return info.lastInsertRowid;
+}
+
+/**
+ * Fetches all orders.
+ * @returns {Array<Object>}
+ */
+export function getAllOrders() {
+  return db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
+}
+
+/**
+ * Fetches orders by token address.
+ * @param {string} address
+ * @returns {Array<Object>}
+ */
+export function getOrdersByAddress(address) {
+  return db.prepare('SELECT * FROM orders WHERE address = ? ORDER BY created_at DESC').all();
+}
+
+/**
+ * Updates current price, market cap, and checked timestamp for an order.
+ * @param {number} id
+ * @param {number} currentPriceUsd
+ * @param {number} currentMcap
+ */
+export function updateOrderPrice(id, currentPriceUsd, currentMcap) {
+  const now = Date.now();
+  db.prepare(`
+    UPDATE orders 
+    SET current_price_usd = ?, current_mcap = ?, updated_at = ?
+    WHERE id = ?
+  `).run(currentPriceUsd, currentMcap, now, id);
 }
 
 /**

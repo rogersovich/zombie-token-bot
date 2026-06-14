@@ -5,7 +5,10 @@ import path from 'path';
 import { SECRETS, CONFIG } from './config.js';
 import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
-import { buildSummaryMessage, buildSingleCheckMessage } from './helpers/message.js';
+import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage } from './helpers/message.js';
+import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice } from './db.js';
+import jupApi from './jupApi.js';
+import { monitorOrders } from './orderMonitor.js';
 
 // Setup validation
 const isTokenConfigured = SECRETS.TELEGRAM_BOT_TOKEN && 
@@ -36,14 +39,14 @@ async function executeScreeningAndSend(ctx = null) {
   const targetId = ctx ? ctx.chat.id : SECRETS.TELEGRAM_CHAT_ID;
 
   const statusMsg = ctx 
-    ? await ctx.reply('🔍 Memulai screening koin mati suri di Solana, mohon tunggu...') 
+    ? await ctx.reply('🔍 Starting Solana zombie token screening, please wait...') 
     : console.log('[Cron] Starting automated screening cycle.');
 
   try {
     const { results, csvPath, totalCandidates } = await runScreening();
 
     if (results.length === 0) {
-      const emptyText = `🔍 Screening selesai: Tidak ada token baru yang memenuhi kriteria saat ini.\n(Dipantau dari total: \`${totalCandidates || 0}\` kandidat)`;
+      const emptyText = `🔍 Screening completed: No new tokens meet the criteria at this moment.\n(Monitored from: \`${totalCandidates || 0}\` candidates)`;
       if (ctx) {
         await ctx.reply(emptyText);
       } else {
@@ -57,7 +60,7 @@ async function executeScreeningAndSend(ctx = null) {
       source: fs.readFileSync(csvPath),
       filename: path.basename(csvPath)
     }, {
-      caption: `📁 Laporan Screening: ${results.length} dari ${totalCandidates} token ditemukan.`
+      caption: `📁 Screening Report: ${results.length} out of ${totalCandidates} tokens found.`
     });
 
     // Send summary text details
@@ -69,7 +72,7 @@ async function executeScreeningAndSend(ctx = null) {
     }
   } catch (error) {
     console.error('[App] Screening execute error:', error.message);
-    const errorText = `❌ Terjadi kesalahan saat menjalankan screening: ${error.message}`;
+    const errorText = `❌ An error occurred during screening: ${error.message}`;
     if (ctx) {
       await ctx.reply(errorText);
     } else {
@@ -80,26 +83,29 @@ async function executeScreeningAndSend(ctx = null) {
 
 // Command Listeners
 bot.start((ctx) => {
-  let welcome = `👋 Selamat datang di *Solana Zombie Token Monitor Bot*!\n\n`;
-  welcome += `Bot ini memantau koin yang pernah ATH tinggi namun sekarang sedang tertidur (akumulasi), tetapi masih memiliki aktivitas transaksi harian.\n\n`;
-  welcome += `*Menu Perintah:*\n`;
-  welcome += `🔹 /screen - Jalankan screening manual sekarang\n`;
-  welcome += `🔹 /status - Cek konfigurasi filter bot saat ini\n`;
+  let welcome = `👋 Welcome to *Solana Zombie Token Monitor Bot*!\n\n`;
+  welcome += `This bot monitors tokens that once reached a high ATH but are currently dormant (accumulating), while still showing daily transaction activity.\n\n`;
+  welcome += `*Command Menu:*\n`;
+  welcome += `🔹 /screen - Run manual screening now\n`;
+  welcome += `🔹 /status - Check current bot filter configuration\n`;
+  welcome += `🔹 /check {CA} - Check token details directly\n`;
+  welcome += `🔹 /buy {CA} [modal_usd] - Record mock token purchase (dryrun)\n`;
+  welcome += `🔹 /pnl [CA] - Check order PnL report\n`;
   ctx.replyWithMarkdown(welcome);
 });
 
 bot.command('status', (ctx) => {
   const nextInfo = getNextCronOccurrence(CONFIG.cronScreenMinutes);
 
-  let status = `⚙️ *Konfigurasi Filter Saat Ini:*\n\n`;
-  status += `• Minimal ATH Mcap: \`$${CONFIG.minAthMcap.toLocaleString()}\`\n`;
-  status += `• Rentang Mcap Akumulasi: \`$${CONFIG.minMcap.toLocaleString()}\` - \`$${CONFIG.maxMcap.toLocaleString()}\`\n`;
-  status += `• Minimal Volume 24 Jam: \`$${CONFIG.minVolume24h.toLocaleString()}\`\n`;
-  status += `• Minimal Jumlah Holder: \`${CONFIG.minHolderCount.toLocaleString()}\`\n`;
-  status += `• Minimal Umur Token: \`${CONFIG.minTokenAgeDays} hari\`\n`;
-  status += `• Minimal Pembelian Terbesar (7 Hari): \`$${CONFIG.minLargestBuyUsd.toLocaleString()}\`\n\n`;
-  status += `🕒 *Jadwal Otomatis:* setiap \`${CONFIG.cronScreenMinutes} menit\`\n`;
-  status += `⏳ *Next Run:* \`${nextInfo.nextRunTimeWIB}\` (dalam *${nextInfo.remainingStr}*)\n`;
+  let status = `⚙️ *Current Filter Configuration:*\n\n`;
+  status += `• Min ATH Mcap: \`$${CONFIG.minAthMcap.toLocaleString()}\`\n`;
+  status += `• Mcap Accumulation Range: \`$${CONFIG.minMcap.toLocaleString()}\` - \`$${CONFIG.maxMcap.toLocaleString()}\`\n`;
+  status += `• Min 24h Volume: \`$${CONFIG.minVolume24h.toLocaleString()}\`\n`;
+  status += `• Min Holder Count: \`${CONFIG.minHolderCount.toLocaleString()}\`\n`;
+  status += `• Min Token Age: \`${CONFIG.minTokenAgeDays} days\`\n`;
+  status += `• Min Largest Buy (7D): \`$${CONFIG.minLargestBuyUsd.toLocaleString()}\`\n\n`;
+  status += `🕒 *Automated Schedule:* every \`${CONFIG.cronScreenMinutes} minutes\`\n`;
+  status += `⏳ *Next Run:* \`${nextInfo.nextRunTimeWIB}\` (in *${nextInfo.remainingStr}*)\n`;
   ctx.replyWithMarkdown(status);
 });
 
@@ -112,15 +118,15 @@ bot.command('check', async (ctx) => {
   const address = args[0]?.trim();
 
   if (!address) {
-    return ctx.replyWithMarkdown('⚠️ *Format salah.*\nSilakan sertakan contract address.\n\nContoh:\n`/check 3ne9QxYRHybHK1LVmtEG8rH7L6nJ56W8KVWeB8ZGpump`');
+    return ctx.replyWithMarkdown('⚠️ *Invalid format.*\nPlease specify a contract address.\n\nExample:\n`/check 3ne9QxYRHybHK1LVmtEG8rH7L6nJ56W8KVWeB8ZGpump`');
   }
 
-  const statusMsg = await ctx.reply(`🔍 Mengecek koin: \`${address}\`...`);
+  const statusMsg = await ctx.reply(`🔍 Checking token: \`${address}\`...`);
 
   try {
     const info = await screenSingleToken(address);
     if (!info) {
-      await ctx.reply(`❌ Koin tidak ditemukan di Jupiter dengan contract address tersebut.`);
+      await ctx.reply(`❌ Token not found on Jupiter with that contract address.`);
       return;
     }
 
@@ -128,7 +134,141 @@ bot.command('check', async (ctx) => {
     await ctx.replyWithMarkdown(textDetails, { disable_web_page_preview: true });
   } catch (error) {
     console.error('[App] Single check error:', error.message);
-    await ctx.reply(`❌ Terjadi kesalahan saat memeriksa koin: ${error.message}`);
+    await ctx.reply(`❌ An error occurred while checking token: ${error.message}`);
+  } finally {
+    if (statusMsg) {
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+    }
+  }
+});
+
+bot.command('buy', async (ctx) => {
+  const args = ctx.message.text.split(' ').slice(1);
+  const address = args[0]?.trim();
+  const customModalStr = args[1]?.trim();
+
+  if (!address) {
+    return ctx.replyWithMarkdown('⚠️ *Invalid format.*\nPlease specify a contract address.\n\nExample:\n`/buy AKQsb5XKL7RohnLGWjRui5ArUYVSZWJ5VwDSa2EEpump [modal_usd]`');
+  }
+
+  // Parse custom modal or use config default
+  let buyAmount = CONFIG.defaultBuyAmountUsd;
+  if (customModalStr) {
+    const parsed = parseFloat(customModalStr);
+    if (!isNaN(parsed) && parsed > 0) {
+      buyAmount = parsed;
+    }
+  }
+
+  const statusMsg = await ctx.reply(`🛒 Processing buy order for token: \`${address}\` with capital $${buyAmount}...`);
+
+  try {
+    const details = await jupApi.searchAsset(address);
+    if (!details) {
+      await ctx.reply(`❌ Token not found on Jupiter with that contract address.`);
+      return;
+    }
+
+    const priceUsd = details.usdPrice || 0;
+    const mcap = details.mcap || 0;
+    const symbol = details.symbol || 'N/A';
+    const name = details.name || 'N/A';
+
+    // Calculate token quantity
+    const tokenQty = priceUsd > 0 ? (buyAmount / priceUsd) : 0;
+
+    // Insert to DB as dryrun
+    const orderId = createOrder({
+      address,
+      symbol,
+      name,
+      price_usd: priceUsd,
+      mcap,
+      type: 'dryrun',
+      buy_amount_usd: buyAmount,
+      token_qty: tokenQty
+    });
+
+    let successMsg = `✅ *Buy Record Success (Dry Run/Paper Trading)*\n\n`;
+    successMsg += `📦 *Order ID:* \`#${orderId}\`\n`;
+    successMsg += `🪙 *Token:* \`${symbol}\` (${name})\n`;
+    successMsg += `🔗 *Address:* \`${address}\`\n`;
+    successMsg += `💵 *Initial Capital:* \`$${buyAmount.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
+    successMsg += `💰 *Entry Price:* \`$${priceUsd.toFixed(8)}\`\n`;
+    successMsg += `📊 *Market Cap:* \`$${mcap.toLocaleString(undefined, { maximumFractionDigits: 2 })}\`\n`;
+    successMsg += `🚦 *Type:* \`dryrun\`\n`;
+    successMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
+
+    await ctx.replyWithMarkdown(successMsg, { disable_web_page_preview: true });
+  } catch (error) {
+    console.error('[App] Buy command error:', error.message);
+    await ctx.reply(`❌ An error occurred during purchase: ${error.message}`);
+  } finally {
+    if (statusMsg) {
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+    }
+  }
+});
+
+bot.command('pnl', async (ctx) => {
+  const args = ctx.message.text.split(' ').slice(1);
+  const address = args[0]?.trim();
+
+  const statusMsg = await ctx.reply('📊 Processing order PnL data, please wait...');
+
+  try {
+    let orders = [];
+    if (address) {
+      orders = getOrdersByAddress(address);
+    } else {
+      orders = getAllOrders();
+    }
+
+    if (orders.length === 0) {
+      await ctx.reply(address 
+        ? `❌ No orders recorded for contract address: \`${address}\``
+        : '📝 No orders recorded yet.'
+      );
+      return;
+    }
+
+    // Fetch real-time price updates for unique addresses
+    const uniqueAddresses = [...new Set(orders.map(o => o.address))];
+    const latestDetails = {};
+    for (const addr of uniqueAddresses) {
+      try {
+        const details = await jupApi.searchAsset(addr);
+        if (details) {
+          latestDetails[addr] = details;
+        }
+      } catch (err) {
+        console.error(`[App] Failed to fetch latest price for ${addr} during PnL check:`, err.message);
+      }
+    }
+
+    // Map the new prices and update the DB in parallel
+    const updatedOrders = orders.map(o => {
+      const details = latestDetails[o.address];
+      if (details) {
+        const currentPrice = details.usdPrice || 0;
+        const currentMcap = details.mcap || 0;
+        updateOrderPrice(o.id, currentPrice, currentMcap);
+        return {
+          ...o,
+          current_price_usd: currentPrice,
+          current_mcap: currentMcap,
+          updated_at: Date.now()
+        };
+      }
+      return o;
+    });
+
+    const pnlMessage = buildPnLMessage(updatedOrders, CONFIG);
+    await ctx.replyWithMarkdown(pnlMessage, { disable_web_page_preview: true });
+
+  } catch (error) {
+    console.error('[App] PnL command error:', error.message);
+    await ctx.reply(`❌ An error occurred while checking PnL: ${error.message}`);
   } finally {
     if (statusMsg) {
       await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
@@ -148,6 +288,7 @@ console.log('🚀 SOLANA ZOMBIE TOKEN MONITOR BOT IS RUNNING');
 console.log('================================================================');
 console.log(`[System] Started at: ${startupTime}`);
 console.log(`[System] Schedule: Run every ${scheduleStr}`);
+console.log(`[System] Order Monitor: Run every ${CONFIG.cronOrderMonitorHours} hour(s)`);
 console.log(`[Filter] Min ATH Mcap: $${CONFIG.minAthMcap.toLocaleString()}`);
 console.log(`[Filter] Mcap Accumulation: $${CONFIG.minMcap.toLocaleString()} - $${CONFIG.maxMcap.toLocaleString()}`);
 console.log(`[Filter] Min 24h Volume: $${CONFIG.minVolume24h.toLocaleString()}`);
@@ -176,6 +317,18 @@ setTimeout(async () => {
   }, CONFIG.cronScreenMinutes * 60 * 1000);
 
 }, delayMs);
+
+// Start order monitor schedule
+console.log(`[Scheduler] Order monitor scheduled to run every ${CONFIG.cronOrderMonitorHours} hour(s)`);
+monitorOrders().catch(err => console.error('[Scheduler] Initial order monitor run failed:', err.message));
+
+setInterval(async () => {
+  try {
+    await monitorOrders();
+  } catch (err) {
+    console.error('[Scheduler] Order monitoring cycle failed:', err.message);
+  }
+}, CONFIG.cronOrderMonitorHours * 60 * 60 * 1000);
 
 // Launch Telegram Bot Listener in parallel
 console.log('[Telegram] Connecting to Telegram API...');
