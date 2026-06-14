@@ -6,7 +6,7 @@ import { SECRETS, CONFIG } from './config.js';
 import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
 import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage } from './helpers/message.js';
-import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice } from './db.js';
+import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder } from './db.js';
 import jupApi from './jupApi.js';
 import { monitorOrders } from './orderMonitor.js';
 import { formatMcap } from './helpers/format.js';
@@ -91,6 +91,7 @@ bot.start((ctx) => {
   welcome += `🔹 /status - Check current bot filter configuration\n`;
   welcome += `🔹 /check {CA} - Check token details directly\n`;
   welcome += `🔹 /buy {CA} [modal_usd] - Record mock token purchase (dryrun)\n`;
+  welcome += `🔹 /buy_limit {CA} {limit_mcap} [modal_usd] - Set limit buy order (dryrun)\n`;
   welcome += `🔹 /pnl [CA] - Check order PnL report\n`;
   ctx.replyWithMarkdown(welcome);
 });
@@ -204,6 +205,81 @@ bot.command('buy', async (ctx) => {
   } catch (error) {
     console.error('[App] Buy command error:', error.message);
     await ctx.reply(`❌ An error occurred during purchase: ${error.message}`);
+  } finally {
+    if (statusMsg) {
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+    }
+  }
+});
+
+bot.command('buy_limit', async (ctx) => {
+  const args = ctx.message.text.split(' ').slice(1);
+  const address = args[0]?.trim();
+  const limitMcapStr = args[1]?.trim();
+  const customModalStr = args[2]?.trim();
+
+  if (!address || !limitMcapStr) {
+    return ctx.replyWithMarkdown('⚠️ *Invalid format.*\nPlease specify a contract address and limit market cap.\n\nExample:\n`/buy_limit AKQsb5XKL7RohnLGWjRui5ArUYVSZWJ5VwDSa2EEpump 4.4k [modal_usd]`');
+  }
+
+  // Parse limit mcap shorthand (e.g. 4.4k -> 4400)
+  const parseMcapShorthand = (str) => {
+    const cleaned = str.trim().toLowerCase();
+    if (cleaned.endsWith('k')) {
+      return parseFloat(cleaned.slice(0, -1)) * 1000;
+    }
+    if (cleaned.endsWith('m')) {
+      return parseFloat(cleaned.slice(0, -1)) * 1000000;
+    }
+    return parseFloat(cleaned);
+  };
+
+  const limitMcap = parseMcapShorthand(limitMcapStr);
+  if (isNaN(limitMcap) || limitMcap <= 0) {
+    return ctx.replyWithMarkdown('⚠️ *Invalid limit market cap value.*\nPlease enter a positive number or shorthand (e.g., 4.4k, 12k, 1M).');
+  }
+
+  // Parse custom modal or use config default
+  let buyAmount = CONFIG.defaultBuyAmountUsd;
+  if (customModalStr) {
+    const parsed = parseFloat(customModalStr);
+    if (!isNaN(parsed) && parsed > 0) {
+      buyAmount = parsed;
+    }
+  }
+
+  const statusMsg = await ctx.reply(`🛒 Creating limit buy order for token: \`${address}\` at Mcap <= $${formatMcap(limitMcap)}...`);
+
+  try {
+    const details = await jupApi.searchAsset(address);
+    if (!details) {
+      await ctx.reply(`❌ Token not found on Jupiter with that contract address.`);
+      return;
+    }
+
+    const symbol = details.symbol || 'N/A';
+    const name = details.name || 'N/A';
+
+    // Insert to DB as pending limit order
+    const limitOrderId = createLimitOrder({
+      address,
+      limit_mcap: limitMcap,
+      buy_amount_usd: buyAmount
+    });
+
+    let successMsg = `✅ *Limit Buy Order Placed Successfully*\n\n`;
+    successMsg += `📦 *Limit Order ID:* \`#${limitOrderId}\`\n`;
+    successMsg += `🪙 *Token:* \`${symbol}\` (${name})\n`;
+    successMsg += `🔗 *Address:* \`${address}\`\n`;
+    successMsg += `💵 *Buy Capital:* \`$${buyAmount.toFixed(2)}\`\n`;
+    successMsg += `🎯 *Target Mcap:* \`$${formatMcap(limitMcap)}\` (Current: \`$${formatMcap(details.mcap || 0)}\`)\n`;
+    successMsg += `🚦 *Status:* \`pending\` (Runs on hourly check)\n`;
+    successMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
+
+    await ctx.replyWithMarkdown(successMsg, { disable_web_page_preview: true });
+  } catch (error) {
+    console.error('[App] Buy limit command error:', error.message);
+    await ctx.reply(`❌ An error occurred while creating limit order: ${error.message}`);
   } finally {
     if (statusMsg) {
       await ctx.deleteMessage(statusMsg.message_id).catch(() => {});

@@ -26,6 +26,15 @@ db.exec(`
     buy_amount_usd REAL,
     token_qty REAL
   );
+
+  CREATE TABLE IF NOT EXISTS limit_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    address TEXT NOT NULL,
+    limit_mcap REAL NOT NULL,
+    buy_amount_usd REAL NOT NULL,
+    status TEXT DEFAULT 'pending',
+    created_at INTEGER NOT NULL
+  );
 `);
 
 // Alter existing tables if columns do not exist
@@ -126,6 +135,41 @@ export function updateOrderPrice(id, currentPriceUsd, currentMcap) {
     SET current_price_usd = ?, current_mcap = ?, updated_at = ?
     WHERE id = ?
   `).run(currentPriceUsd, currentMcap, now, id);
+}
+
+/**
+ * Creates a limit order.
+ * @param {Object} limitOrder
+ * @param {string} limitOrder.address
+ * @param {number} limitOrder.limit_mcap
+ * @param {number} limitOrder.buy_amount_usd
+ * @returns {number}
+ */
+export function createLimitOrder({ address, limit_mcap, buy_amount_usd }) {
+  const now = Date.now();
+  const info = db.prepare(`
+    INSERT INTO limit_orders (address, limit_mcap, buy_amount_usd, status, created_at)
+    VALUES (?, ?, ?, 'pending', ?)
+  `).run(address, limit_mcap, buy_amount_usd, now);
+  
+  return info.lastInsertRowid;
+}
+
+/**
+ * Fetches all pending limit orders.
+ * @returns {Array<Object>}
+ */
+export function getPendingLimitOrders() {
+  return db.prepare("SELECT * FROM limit_orders WHERE status = 'pending'").all();
+}
+
+/**
+ * Updates the status of a limit order.
+ * @param {number} id
+ * @param {'pending'|'executed'|'cancelled'} status
+ */
+export function updateLimitOrderStatus(id, status) {
+  db.prepare('UPDATE limit_orders SET status = ? WHERE id = ?').run(status, id);
 }
 
 /**
