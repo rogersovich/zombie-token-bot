@@ -5,8 +5,8 @@ import path from 'path';
 import { SECRETS, CONFIG } from './config.js';
 import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
-import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage } from './helpers/message.js';
-import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder } from './db.js';
+import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage, buildLimitOrdersMessage } from './helpers/message.js';
+import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus } from './db.js';
 import jupApi from './jupApi.js';
 import { monitorOrders } from './orderMonitor.js';
 import { formatMcap } from './helpers/format.js';
@@ -92,6 +92,8 @@ bot.start((ctx) => {
   welcome += `🔹 /check {CA} - Check token details directly\n`;
   welcome += `🔹 /buy {CA} [modal_usd] - Record mock token purchase (dryrun)\n`;
   welcome += `🔹 /buy_limit {CA} {limit_mcap} [modal_usd] - Set limit buy order (dryrun)\n`;
+  welcome += `🔹 /limit_list - List all pending limit buy orders\n`;
+  welcome += `🔹 /limit_cancel {limit_order_id} - Cancel a pending limit buy order\n`;
   welcome += `🔹 /pnl [CA] - Check order PnL report\n`;
   ctx.replyWithMarkdown(welcome);
 });
@@ -284,6 +286,50 @@ bot.command('buy_limit', async (ctx) => {
     if (statusMsg) {
       await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
     }
+  }
+});
+
+bot.command('limit_list', async (ctx) => {
+  try {
+    const pending = getPendingLimitOrders();
+    const message = buildLimitOrdersMessage(pending);
+    await ctx.replyWithMarkdown(message);
+  } catch (error) {
+    console.error('[App] Limit list command error:', error.message);
+    await ctx.reply(`❌ An error occurred while fetching limit orders: ${error.message}`);
+  }
+});
+
+bot.command('limit_cancel', async (ctx) => {
+  const args = ctx.message.text.split(' ').slice(1);
+  const orderIdStr = args[0]?.trim();
+
+  if (!orderIdStr) {
+    return ctx.replyWithMarkdown('⚠️ *Invalid format.*\nPlease specify a limit order ID.\n\nExample:\n`/limit_cancel 1`');
+  }
+
+  const orderId = parseInt(orderIdStr);
+  if (isNaN(orderId)) {
+    return ctx.replyWithMarkdown('⚠️ *Invalid limit order ID.*\nPlease enter a valid integer.');
+  }
+
+  try {
+    const order = getLimitOrder(orderId);
+    if (!order) {
+      await ctx.reply(`❌ Limit Order \`#${orderId}\` not found.`);
+      return;
+    }
+
+    if (order.status !== 'pending') {
+      await ctx.reply(`❌ Limit Order \`#${orderId}\` cannot be cancelled because its status is \`${order.status}\`.`);
+      return;
+    }
+
+    updateLimitOrderStatus(orderId, 'cancelled');
+    await ctx.reply(`✅ *Limit Order #${orderId} has been successfully cancelled.*`);
+  } catch (error) {
+    console.error('[App] Limit cancel command error:', error.message);
+    await ctx.reply(`❌ An error occurred while cancelling limit order: ${error.message}`);
   }
 });
 

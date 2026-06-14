@@ -155,12 +155,17 @@ export function createLimitOrder({ address, limit_mcap, buy_amount_usd }) {
   return info.lastInsertRowid;
 }
 
-/**
- * Fetches all pending limit orders.
- * @returns {Array<Object>}
- */
 export function getPendingLimitOrders() {
   return db.prepare("SELECT * FROM limit_orders WHERE status = 'pending'").all();
+}
+
+/**
+ * Fetches a limit order by ID.
+ * @param {number} id
+ * @returns {Object|undefined}
+ */
+export function getLimitOrder(id) {
+  return db.prepare('SELECT * FROM limit_orders WHERE id = ?').get(id);
 }
 
 /**

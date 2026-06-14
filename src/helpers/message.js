@@ -105,8 +105,27 @@ export function buildPnLMessage(orders, config = null) {
   return message;
 }
 
+export function buildLimitOrdersMessage(limitOrders) {
+  if (limitOrders.length === 0) {
+    return '📝 *No pending limit orders found.*';
+  }
+
+  let message = `⏳ *Pending Limit Buy Orders (${limitOrders.length})*\n\n`;
+
+  limitOrders.forEach((o, i) => {
+    message += `${i + 1}. *Limit Order #${o.id}*\n`;
+    message += `   • Address: \`${o.address}\`\n`;
+    message += `   • Target Mcap: \`$${formatMcap(o.limit_mcap)}\`\n`;
+    message += `   • Capital: \`$${o.buy_amount_usd.toFixed(2)}\`\n`;
+    message += `   • Created At: \`${formatToWIB(o.created_at)}\`\n\n`;
+  });
+
+  return message;
+}
+
 export default {
   buildSummaryMessage,
   buildSingleCheckMessage,
-  buildPnLMessage
+  buildPnLMessage,
+  buildLimitOrdersMessage
 };
