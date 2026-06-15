@@ -5,8 +5,8 @@ import path from 'path';
 import { SECRETS, CONFIG } from './config.js';
 import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
-import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage, buildLimitOrdersMessage } from './helpers/message.js';
-import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus } from './db.js';
+import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage, buildLimitOrdersMessage, buildAlertsMessage } from './helpers/message.js';
+import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts } from './db.js';
 import jupApi from './jupApi.js';
 import { monitorOrders } from './orderMonitor.js';
 import { formatMcap } from './helpers/format.js';
@@ -135,6 +135,7 @@ bot.start((ctx) => {
   welcome += `🔹 /screen - Run manual screening now\n`;
   welcome += `🔹 /status - Check current bot filter configuration\n`;
   welcome += `🔹 /check {CA} - Check token details directly\n`;
+  welcome += `🔹 /alerts - List all screened tokens in database\n`;
   welcome += `🔹 /buy {CA} [modal_usd] - Record mock token purchase (dryrun)\n`;
   welcome += `🔹 /buy_limit {CA} {limit_mcap} [modal_usd] - Set limit buy order (dryrun)\n`;
   welcome += `🔹 /limit_list - List all pending limit buy orders\n`;
@@ -184,6 +185,56 @@ bot.command('check', async (ctx) => {
   } catch (error) {
     console.error('[App] Single check error:', error.message);
     await ctx.reply(`❌ An error occurred while checking token: ${error.message}`);
+  } finally {
+    if (statusMsg) {
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+    }
+  }
+});
+
+bot.command('alerts', async (ctx) => {
+  const statusMsg = await ctx.reply('🔍 Fetching screened tokens list, please wait...');
+
+  try {
+    const alerts = getAllAlerts();
+    if (alerts.length === 0) {
+      await ctx.reply('📝 *No screened tokens found in the database.*');
+      return;
+    }
+
+    // Resolve details for the top 20 alerts to avoid too many API calls
+    const resolvedAlerts = [];
+    const alertsToProcess = alerts.slice(0, 20);
+
+    for (const a of alertsToProcess) {
+      try {
+        const details = await jupApi.searchAsset(a.address);
+        if (details) {
+          resolvedAlerts.push({
+            ...a,
+            symbol: details.symbol,
+            name: details.name
+          });
+        } else {
+          resolvedAlerts.push(a);
+        }
+      } catch (err) {
+        resolvedAlerts.push(a);
+      }
+      // slight delay to respect rate limit
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    // Append the remaining ones unresolved
+    if (alerts.length > 20) {
+      resolvedAlerts.push(...alerts.slice(20));
+    }
+
+    const message = buildAlertsMessage(resolvedAlerts);
+    await sendSplitMessage(ctx, null, message, { parse_mode: 'Markdown' });
+  } catch (error) {
+    console.error('[App] Alerts list command error:', error.message);
+    await ctx.reply(`❌ An error occurred while fetching screened tokens: ${error.message}`);
   } finally {
     if (statusMsg) {
       await ctx.deleteMessage(statusMsg.message_id).catch(() => {});

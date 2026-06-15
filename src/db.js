@@ -178,6 +178,14 @@ export function updateLimitOrderStatus(id, status) {
 }
 
 /**
+ * Fetches all token alerts.
+ * @returns {Array<Object>}
+ */
+export function getAllAlerts() {
+  return db.prepare('SELECT * FROM token_alerts ORDER BY alerted_at DESC').all();
+}
+
+/**
  * Clears old alerts from the database.
  * Optional clean up utility.
  */

@@ -123,9 +123,29 @@ export function buildLimitOrdersMessage(limitOrders) {
   return message;
 }
 
+export function buildAlertsMessage(alerts) {
+  if (alerts.length === 0) {
+    return '📝 *No screened tokens recorded in the database.*';
+  }
+
+  let message = `🎯 *Screened Tokens List (${alerts.length})*\n\n`;
+
+  alerts.forEach((a, i) => {
+    const symbolStr = a.symbol ? `*${a.symbol}* (${a.name || 'N/A'})` : `\`${a.address}\``;
+    message += `${i + 1}. ${symbolStr}\n`;
+    if (a.symbol) {
+      message += `   • Address: \`${a.address}\`\n`;
+    }
+    message += `   • Screened At: \`${formatToWIB(a.alerted_at)}\`\n\n`;
+  });
+
+  return message;
+}
+
 export default {
   buildSummaryMessage,
   buildSingleCheckMessage,
   buildPnLMessage,
-  buildLimitOrdersMessage
+  buildLimitOrdersMessage,
+  buildAlertsMessage
 };
