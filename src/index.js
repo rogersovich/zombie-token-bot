@@ -32,6 +32,51 @@ if (!isTokenConfigured || !isChatIdConfigured) {
 const bot = new Telegraf(SECRETS.TELEGRAM_BOT_TOKEN);
 
 /**
+ * Sends a long message by splitting it into smaller chunks if it exceeds Telegram's limit.
+ * @param {object} telegramOrCtx The bot.telegram instance or command context
+ * @param {string|number} targetId Chat ID (used if sending via bot.telegram)
+ * @param {string} text The message text
+ * @param {object} options Extra options (e.g. parse_mode, disable_web_page_preview)
+ */
+async function sendSplitMessage(telegramOrCtx, targetId, text, options = {}) {
+  const isCtx = typeof telegramOrCtx.reply === 'function';
+  
+  if (text.length <= 4000) {
+    if (isCtx) {
+      return await telegramOrCtx.reply(text, options);
+    } else {
+      return await telegramOrCtx.sendMessage(targetId, text, options);
+    }
+  }
+
+  const paragraphs = text.split('\n\n');
+  let currentChunk = '';
+
+  for (const paragraph of paragraphs) {
+    if ((currentChunk + '\n\n' + paragraph).length > 4000) {
+      if (currentChunk.trim()) {
+        if (isCtx) {
+          await telegramOrCtx.reply(currentChunk.trim(), options);
+        } else {
+          await telegramOrCtx.sendMessage(targetId, currentChunk.trim(), options);
+        }
+      }
+      currentChunk = paragraph;
+    } else {
+      currentChunk = currentChunk ? `${currentChunk}\n\n${paragraph}` : paragraph;
+    }
+  }
+
+  if (currentChunk.trim()) {
+    if (isCtx) {
+      await telegramOrCtx.reply(currentChunk.trim(), options);
+    } else {
+      await telegramOrCtx.sendMessage(targetId, currentChunk.trim(), options);
+    }
+  }
+}
+
+/**
  * Executes the screening and sends reports to Telegram.
  * @param {boolean} silentOnEmpty
  */
@@ -66,7 +111,7 @@ async function executeScreeningAndSend(ctx = null) {
 
     // Send summary text details
     const textDetails = buildSummaryMessage(results, totalCandidates);
-    await bot.telegram.sendMessage(targetId, textDetails, { parse_mode: 'Markdown', disable_web_page_preview: true });
+    await sendSplitMessage(bot.telegram, targetId, textDetails, { parse_mode: 'Markdown', disable_web_page_preview: true });
 
     if (ctx && statusMsg) {
       await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
@@ -387,7 +432,7 @@ bot.command('pnl', async (ctx) => {
     });
 
     const pnlMessage = buildPnLMessage(updatedOrders, CONFIG);
-    await ctx.replyWithMarkdown(pnlMessage, { disable_web_page_preview: true });
+    await sendSplitMessage(ctx, null, pnlMessage, { parse_mode: 'Markdown', disable_web_page_preview: true });
 
   } catch (error) {
     console.error('[App] PnL command error:', error.message);
