@@ -123,16 +123,27 @@ export function buildLimitOrdersMessage(limitOrders) {
   return message;
 }
 
-export function buildAlertsMessage(alerts) {
+export function buildAlertsMessage(alerts, boughtAddresses = [], pendingLimitAddresses = []) {
   if (alerts.length === 0) {
     return '📝 *No screened tokens recorded in the database.*';
   }
 
+  const boughtSet = new Set(boughtAddresses);
+  const pendingSet = new Set(pendingLimitAddresses);
+
   let message = `🎯 *Screened Tokens List (${alerts.length})*\n\n`;
 
   alerts.forEach((a, i) => {
+    let flags = '';
+    if (boughtSet.has(a.address)) {
+      flags += ' `[BOUGHT]`';
+    }
+    if (pendingSet.has(a.address)) {
+      flags += ' `[LIMIT PENDING]`';
+    }
+
     const symbolStr = a.symbol ? `*${a.symbol}* (${a.name || 'N/A'})` : `\`${a.address}\``;
-    message += `${i + 1}. ${symbolStr}\n`;
+    message += `${i + 1}. ${symbolStr}${flags}\n`;
     if (a.symbol) {
       message += `   • Address: \`${a.address}\`\n`;
     }

@@ -6,7 +6,7 @@ import { SECRETS, CONFIG } from './config.js';
 import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
 import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage, buildLimitOrdersMessage, buildAlertsMessage } from './helpers/message.js';
-import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts } from './db.js';
+import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts, getBoughtAddresses, getPendingLimitAddresses } from './db.js';
 import jupApi from './jupApi.js';
 import { monitorOrders } from './orderMonitor.js';
 import { formatMcap } from './helpers/format.js';
@@ -230,7 +230,9 @@ bot.command('alerts', async (ctx) => {
       resolvedAlerts.push(...alerts.slice(20));
     }
 
-    const message = buildAlertsMessage(resolvedAlerts);
+    const boughtAddresses = getBoughtAddresses();
+    const pendingLimitAddresses = getPendingLimitAddresses();
+    const message = buildAlertsMessage(resolvedAlerts, boughtAddresses, pendingLimitAddresses);
     await sendSplitMessage(ctx, null, message, { parse_mode: 'Markdown' });
   } catch (error) {
     console.error('[App] Alerts list command error:', error.message);

@@ -177,12 +177,26 @@ export function updateLimitOrderStatus(id, status) {
   db.prepare('UPDATE limit_orders SET status = ? WHERE id = ?').run(status, id);
 }
 
-/**
- * Fetches all token alerts.
- * @returns {Array<Object>}
- */
 export function getAllAlerts() {
   return db.prepare('SELECT * FROM token_alerts ORDER BY alerted_at DESC').all();
+}
+
+/**
+ * Fetches unique token addresses that have been bought.
+ * @returns {Array<string>}
+ */
+export function getBoughtAddresses() {
+  const rows = db.prepare('SELECT DISTINCT address FROM orders').all();
+  return rows.map(r => r.address);
+}
+
+/**
+ * Fetches unique token addresses that have pending limit buy orders.
+ * @returns {Array<string>}
+ */
+export function getPendingLimitAddresses() {
+  const rows = db.prepare("SELECT DISTINCT address FROM limit_orders WHERE status = 'pending'").all();
+  return rows.map(r => r.address);
 }
 
 /**
