@@ -12,15 +12,21 @@ const BASE_URL = 'https://datapi.jup.ag';
  * @param {number} delayMs
  * @returns {Promise<any>}
  */
-async function fetchWithRetry(url, retries = 3, delayMs = 1500) {
+async function fetchWithRetry(url, retries = 3, delayMs = 10000) {
   for (let i = 0; i < retries; i++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds hard timeout
+
     try {
       const response = await fetch(url, {
         headers: {
           'Accept': 'application/json',
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'
-        }
+        },
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (response.status === 429) {
         console.warn(`[API Rate Limit 429] Retrying URL: ${url} (Attempt ${i + 1}/${retries})`);
@@ -34,10 +40,11 @@ async function fetchWithRetry(url, retries = 3, delayMs = 1500) {
 
       return await response.json();
     } catch (error) {
+      clearTimeout(timeoutId);
       if (i === retries - 1) {
         throw error;
       }
-      console.warn(`[API Request Error] ${error.message}. Retrying ${url} in ${delayMs}ms...`);
+      console.warn(`[API Request Error] ${error.message === 'The user aborted a request.' ? 'Request Timeout (30s)' : error.message}. Retrying ${url} in ${delayMs}ms...`);
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
   }

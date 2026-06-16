@@ -318,80 +318,84 @@ export async function runScreening(maxTokensToProcess = null) {
       processedCount++;
       console.log(`[Monitor] Processing token (${processedCount}/${maxTokensToProcess || trending.length}): ${token.symbol} (${address})`);
 
-      // 3. Fetch detailed search info to get createdAt and accurate social links
-      const details = await jupApi.searchAsset(address);
-      if (!details) {
-        console.warn(`[Monitor] Details not found for ${address}. Skipping.`);
-        continue;
+      try {
+        // 3. Fetch detailed search info to get createdAt and accurate social links
+        const details = await jupApi.searchAsset(address);
+        if (!details) {
+          console.warn(`[Monitor] Details not found for ${address}. Skipping.`);
+          continue;
+        }
+
+        // Calculate token age in days
+        const createdAtMs = new Date(details.createdAt || token.createdAt).getTime();
+        const ageDays = (Date.now() - createdAtMs) / (1000 * 60 * 60 * 24);
+
+        if (ageDays <= CONFIG.minTokenAgeDays) {
+          console.log(`[Monitor] Token ${token.symbol} age is ${ageDays.toFixed(1)} days (must be greater than ${CONFIG.minTokenAgeDays}). Skipping.`);
+          continue;
+        }
+
+        // 4. Validate transaction gap (gap <= 24h) and largest buy USD
+        const txValidation = await validateTransactionGap(address);
+        if (!txValidation.isValid) {
+          console.log(`[Monitor] Token ${token.symbol} transaction gap exceeds 24h. Skipping.`);
+          continue;
+        }
+
+        if (txValidation.largestBuyUsd < CONFIG.minLargestBuyUsd) {
+          console.log(`[Monitor] Token ${token.symbol} largest buy is $${txValidation.largestBuyUsd.toFixed(2)} (minimum $${CONFIG.minLargestBuyUsd} required). Skipping.`);
+          continue;
+        }
+
+        // 5. Historical charts analysis (ATH & averages)
+        const mcAnalysis = await analyzeMarketCap(address, ageDays);
+
+        if (mcAnalysis.athMcap < CONFIG.minAthMcap) {
+          console.log(`[Monitor] Token ${token.symbol} ATH Mcap is $${mcAnalysis.athMcap.toFixed(2)} (minimum $${CONFIG.minAthMcap} required). Skipping.`);
+          continue;
+        }
+
+        // Calculate dump percentage from ATH to current market cap
+        const currentMcap = details.mcap || token.mcap || 0;
+        const dumpPercent = mcAnalysis.athMcap > 0 ? ((1 - currentMcap / mcAnalysis.athMcap) * 100) : 0;
+
+        // Token passed all validations
+        const resultObj = {
+          address: address,
+          name: details.name || token.name,
+          symbol: details.symbol || token.symbol,
+          age_days: ageDays.toFixed(1),
+          current_mcap: formatMcap(currentMcap),
+          ath_mcap: formatMcap(mcAnalysis.athMcap),
+          dump_percent: dumpPercent.toFixed(1),
+          avg_mcap_3d: formatMcap(mcAnalysis.avg3d),
+          avg_mcap_7d: formatMcap(mcAnalysis.avg7d),
+          avg_mcap_30d: formatMcap(mcAnalysis.avg30d),
+          max_tx_gap_hours: txValidation.maxGapHours.toFixed(1),
+          last_tx_time_wib: formatToWIB(txValidation.lastTxTime),
+          largest_buy_usd: txValidation.largestBuyUsd.toFixed(1),
+          largest_buy_wallet: txValidation.largestBuyWallet,
+          largest_buy_time_wib: formatToWIB(txValidation.largestBuyTime),
+          largest_buy_usd_3d: txValidation.largestBuyUsd3d.toFixed(1),
+          largest_buy_wallet_3d: txValidation.largestBuyWallet3d,
+          largest_buy_time_wib_3d: formatToWIB(txValidation.largestBuyTime3d),
+          largest_buy_usd_1d: txValidation.largestBuyUsd1d.toFixed(1),
+          largest_buy_wallet_1d: txValidation.largestBuyWallet1d,
+          largest_buy_time_wib_1d: formatToWIB(txValidation.largestBuyTime1d),
+          buy_count_24h: txValidation.buyCount24h,
+          sell_count_24h: txValidation.sellCount24h,
+          website: details.website || 'N/A',
+          twitter: details.twitter || 'N/A'
+        };
+
+        console.log(`[Monitor] MATCH FOUND! ${token.symbol} - ATH: ${resultObj.ath_mcap}, Current Mcap: ${resultObj.current_mcap}`);
+        matchedTokens.push(resultObj);
+        
+        // Mark token in database
+        markTokenAlerted(address);
+      } catch (tokenError) {
+        console.error(`[Monitor] Error screening token ${token.symbol || 'N/A'} (${address}): ${tokenError.message}. Skipping to next token.`);
       }
-
-      // Calculate token age in days
-      const createdAtMs = new Date(details.createdAt || token.createdAt).getTime();
-      const ageDays = (Date.now() - createdAtMs) / (1000 * 60 * 60 * 24);
-
-      if (ageDays <= CONFIG.minTokenAgeDays) {
-        console.log(`[Monitor] Token ${token.symbol} age is ${ageDays.toFixed(1)} days (must be greater than ${CONFIG.minTokenAgeDays}). Skipping.`);
-        continue;
-      }
-
-      // 4. Validate transaction gap (gap <= 24h) and largest buy USD
-      const txValidation = await validateTransactionGap(address);
-      if (!txValidation.isValid) {
-        console.log(`[Monitor] Token ${token.symbol} transaction gap exceeds 24h. Skipping.`);
-        continue;
-      }
-
-      if (txValidation.largestBuyUsd < CONFIG.minLargestBuyUsd) {
-        console.log(`[Monitor] Token ${token.symbol} largest buy is $${txValidation.largestBuyUsd.toFixed(2)} (minimum $${CONFIG.minLargestBuyUsd} required). Skipping.`);
-        continue;
-      }
-
-      // 5. Historical charts analysis (ATH & averages)
-      const mcAnalysis = await analyzeMarketCap(address, ageDays);
-
-      if (mcAnalysis.athMcap < CONFIG.minAthMcap) {
-        console.log(`[Monitor] Token ${token.symbol} ATH Mcap is $${mcAnalysis.athMcap.toFixed(2)} (minimum $${CONFIG.minAthMcap} required). Skipping.`);
-        continue;
-      }
-
-      // Calculate dump percentage from ATH to current market cap
-      const currentMcap = details.mcap || token.mcap || 0;
-      const dumpPercent = mcAnalysis.athMcap > 0 ? ((1 - currentMcap / mcAnalysis.athMcap) * 100) : 0;
-
-      // Token passed all validations
-      const resultObj = {
-        address: address,
-        name: details.name || token.name,
-        symbol: details.symbol || token.symbol,
-        age_days: ageDays.toFixed(1),
-        current_mcap: formatMcap(currentMcap),
-        ath_mcap: formatMcap(mcAnalysis.athMcap),
-        dump_percent: dumpPercent.toFixed(1),
-        avg_mcap_3d: formatMcap(mcAnalysis.avg3d),
-        avg_mcap_7d: formatMcap(mcAnalysis.avg7d),
-        avg_mcap_30d: formatMcap(mcAnalysis.avg30d),
-        max_tx_gap_hours: txValidation.maxGapHours.toFixed(1),
-        last_tx_time_wib: formatToWIB(txValidation.lastTxTime),
-        largest_buy_usd: txValidation.largestBuyUsd.toFixed(1),
-        largest_buy_wallet: txValidation.largestBuyWallet,
-        largest_buy_time_wib: formatToWIB(txValidation.largestBuyTime),
-        largest_buy_usd_3d: txValidation.largestBuyUsd3d.toFixed(1),
-        largest_buy_wallet_3d: txValidation.largestBuyWallet3d,
-        largest_buy_time_wib_3d: formatToWIB(txValidation.largestBuyTime3d),
-        largest_buy_usd_1d: txValidation.largestBuyUsd1d.toFixed(1),
-        largest_buy_wallet_1d: txValidation.largestBuyWallet1d,
-        largest_buy_time_wib_1d: formatToWIB(txValidation.largestBuyTime1d),
-        buy_count_24h: txValidation.buyCount24h,
-        sell_count_24h: txValidation.sellCount24h,
-        website: details.website || 'N/A',
-        twitter: details.twitter || 'N/A'
-      };
-
-      console.log(`[Monitor] MATCH FOUND! ${token.symbol} - ATH: ${resultObj.ath_mcap}, Current Mcap: ${resultObj.current_mcap}`);
-      matchedTokens.push(resultObj);
-      
-      // Mark token in database
-      markTokenAlerted(address);
     }
 
     if (matchedTokens.length === 0) {
