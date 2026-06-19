@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test",
+    "test": "DB_PATH=/tmp/dead-coin-test.db TRADING_MODE=dryrun node --test",
     "gen-wallet": "node src/genWallet.js"
   },
   "dependencies": {
