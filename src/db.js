@@ -1,7 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 
-const dbPath = path.resolve(process.cwd(), 'bot.db');
+const dbPath = process.env.DB_PATH || path.resolve(process.cwd(), 'bot.db');
 const db = new Database(dbPath);
 
 // Initialize database schema
@@ -61,6 +61,18 @@ try {
 try {
   db.exec("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'open'");
 } catch (_) {}
+try {
+  db.exec("ALTER TABLE orders ADD COLUMN mode TEXT DEFAULT 'dryrun'");
+} catch (_) {}
+try {
+  db.exec('ALTER TABLE orders ADD COLUMN tx_signature TEXT');
+} catch (_) {}
+try {
+  db.exec('ALTER TABLE orders ADD COLUMN sell_tx_signature TEXT');
+} catch (_) {}
+try {
+  db.exec('ALTER TABLE orders ADD COLUMN realized_sol REAL');
+} catch (_) {}
 
 /**
  * Checks if a token should be alerted.
@@ -103,13 +115,13 @@ export function markTokenAlerted(address) {
  * @param {number} order.token_qty
  * @returns {number} The ID of the inserted order
  */
-export function createOrder({ address, symbol, name, price_usd, mcap, type = 'dryrun', buy_amount_usd, token_qty }) {
+export function createOrder({ address, symbol, name, price_usd, mcap, type = 'dryrun', buy_amount_usd, token_qty, mode = 'dryrun', tx_signature = null }) {
   const now = Date.now();
   const info = db.prepare(`
-    INSERT INTO orders (address, symbol, name, price_usd, mcap, type, created_at, buy_amount_usd, token_qty)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(address, symbol, name, price_usd, mcap, type, now, buy_amount_usd, token_qty);
-  
+    INSERT INTO orders (address, symbol, name, price_usd, mcap, type, created_at, buy_amount_usd, token_qty, mode, tx_signature)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(address, symbol, name, price_usd, mcap, type, now, buy_amount_usd, token_qty, mode, tx_signature);
+
   return info.lastInsertRowid;
 }
 
@@ -248,13 +260,13 @@ export function getOrderById(id) {
  * @param {number} sellPriceUsd
  * @param {number} sellMcap
  */
-export function closeOrder(id, sellPriceUsd, sellMcap) {
+export function closeOrder(id, sellPriceUsd, sellMcap, sellTxSignature = null, realizedSol = null) {
   const now = Date.now();
   db.prepare(`
-    UPDATE orders 
-    SET status = 'sold', current_price_usd = ?, current_mcap = ?, updated_at = ?
+    UPDATE orders
+    SET status = 'sold', current_price_usd = ?, current_mcap = ?, updated_at = ?, sell_tx_signature = ?, realized_sol = ?
     WHERE id = ?
-  `).run(sellPriceUsd, sellMcap, now, id);
+  `).run(sellPriceUsd, sellMcap, now, sellTxSignature, realizedSol, id);
 }
 
 export default db;
