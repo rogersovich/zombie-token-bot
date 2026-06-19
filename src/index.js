@@ -30,6 +30,16 @@ if (!isTokenConfigured || !isChatIdConfigured) {
   process.exit(1);
 }
 
+const liveCheck = validateLiveConfig();
+if (!liveCheck.ok) {
+  console.error('================================================================');
+  console.error('⚠️  LIVE MODE CONFIG ERROR');
+  console.error(`   ${liveCheck.reason}`);
+  console.error('   Set the missing values in .env or switch TRADING_MODE=dryrun.');
+  console.error('================================================================');
+  process.exit(1);
+}
+
 const bot = new Telegraf(SECRETS.TELEGRAM_BOT_TOKEN);
 
 /**
@@ -665,6 +675,7 @@ console.log('\n================================================================'
 console.log('🚀 SOLANA ZOMBIE TOKEN MONITOR BOT IS RUNNING');
 console.log('================================================================');
 console.log(`[System] Started at: ${startupTime}`);
+console.log(`[System] TRADING MODE: ${isLiveMode() ? '🔴 LIVE (real swaps)' : '🟢 DRY RUN (paper)'}`);
 console.log(`[System] Schedule: Run every ${scheduleStr}`);
 console.log(`[System] Order Monitor: Run every ${CONFIG.cronOrderMonitorHours} hour(s)`);
 console.log(`[Filter] Min ATH Mcap: $${CONFIG.minAthMcap.toLocaleString()}`);
