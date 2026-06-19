@@ -602,6 +602,58 @@ async function handleManualTakeProfit(ctx) {
 bot.command('sell', handleManualTakeProfit);
 bot.command('tp', handleManualTakeProfit);
 
+bot.action(/^tp_ignore:(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery('Ignored.');
+});
+
+bot.action(/^sell_tp:(\d+)$/, async (ctx) => {
+  const orderId = parseInt(ctx.match[1]);
+  await ctx.answerCbQuery('Processing sell...');
+
+  try {
+    const order = getOrderById(orderId);
+    if (!order) {
+      await ctx.reply(`❌ Order \`#${orderId}\` not found.`, { parse_mode: 'Markdown' });
+      return;
+    }
+    if (order.status === 'sold') {
+      await ctx.reply(`❌ Order \`#${orderId}\` is already sold/closed.`, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const details = await jupApi.searchAsset(order.address);
+    const currentPriceUsd = details?.usdPrice || order.current_price_usd || order.price_usd;
+    const currentMcap = details?.mcap || order.current_mcap || order.mcap;
+
+    const result = await trader.executeSell({ orders: [order], currentPriceUsd, currentMcap });
+    if (!result.ok) {
+      await ctx.reply(`❌ Sell failed: ${result.reason}\nOrder remains open.`, { parse_mode: 'Markdown' });
+      return;
+    }
+
+    const r = result.results[0];
+    const modalUsd = order.buy_amount_usd || 0;
+    const pnlUsd = r.realizedUsd - modalUsd;
+    const pct = modalUsd > 0 ? (pnlUsd / modalUsd) * 100 : 0;
+    const sign = pnlUsd >= 0 ? '+' : '';
+    const modeLabel = isLiveMode() ? 'LIVE' : 'Dry Run';
+
+    let msg = `✅ *Take Profit Executed (${modeLabel})*\n\n`;
+    msg += `📦 *Order ID:* \`#${order.id}\`\n`;
+    msg += `🪙 *Token:* \`${order.symbol || 'N/A'}\`\n`;
+    msg += `📈 *Sell Price:* \`$${r.sellPrice.toFixed(8)}\`\n`;
+    msg += `💵 *Realized:* \`$${r.realizedUsd.toFixed(2)}\`\n`;
+    msg += `🟢 *PnL:* \`${sign}${pct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)\n`;
+    if (result.signature) {
+      msg += `🔁 *Tx:* [solscan](https://solscan.io/tx/${result.signature})\n`;
+    }
+    await ctx.replyWithMarkdown(msg, { disable_web_page_preview: true });
+  } catch (error) {
+    console.error('[App] sell_tp action error:', error.message);
+    await ctx.reply(`❌ Error during take profit: ${error.message}`);
+  }
+});
+
 // Start scheduler immediately (independently of bot.launch)
 const startupTime = formatToWIB(Date.now());
 

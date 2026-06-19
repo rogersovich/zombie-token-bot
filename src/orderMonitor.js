@@ -1,8 +1,9 @@
 import jupApi from './jupApi.js';
-import { getOpenOrders, updateOrderPrice, getPendingLimitOrders, createOrder, updateLimitOrderStatus, markOrderTpAlerted } from './db.js';
+import { getOpenOrders, updateOrderPrice, getPendingLimitOrders, updateLimitOrderStatus, markOrderTpAlerted } from './db.js';
 import { formatToWIB } from './helpers/time.js';
-import { SECRETS, CONFIG } from './config.js';
+import { SECRETS, CONFIG, isLiveMode } from './config.js';
 import { formatMcap } from './helpers/format.js';
+import { trader } from './trader.js';
 
 /**
  * Periodically updates the current prices and market caps of all orders in the database.
@@ -44,7 +45,8 @@ export async function monitorOrders(telegram = null) {
             const currentValueUsd = tokenQty * currentPrice;
             const pnlUsd = currentValueUsd - modalUsd;
 
-            let alertMsg = `🎯 *Take Profit Achieved! (Dry Run)*\n\n`;
+            const tpModeLabel = isLiveMode() ? 'LIVE' : 'Dry Run';
+            let alertMsg = `🎯 *Take Profit Achieved! (${tpModeLabel})*\n\n`;
             alertMsg += `📦 *Order ID:* \`#${order.id}\`\n`;
             alertMsg += `🪙 *Token:* \`${order.symbol || 'N/A'}\` (${order.name || 'N/A'})\n`;
             alertMsg += `🔗 *Address:* \`${order.address}\`\n`;
@@ -52,11 +54,20 @@ export async function monitorOrders(telegram = null) {
             alertMsg += `💰 *Entry Price:* \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${order.mcap ? formatMcap(order.mcap) : 'N/A'}\`)\n`;
             alertMsg += `📈 *Current Price:* \`$${currentPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? formatMcap(currentMcap) : 'N/A'}\`)\n`;
             alertMsg += `🟢 *PnL:* \`+${priceChangePct.toFixed(2)}%\` (\`+$${pnlUsd.toFixed(2)}\`)\n`;
-            alertMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
+            alertMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n\n`;
+            alertMsg += `Tap *Sell Now* to close this order.`;
 
             if (telegram) {
               try {
-                await telegram.sendMessage(targetId, alertMsg, { parse_mode: 'Markdown' });
+                await telegram.sendMessage(targetId, alertMsg, {
+                  parse_mode: 'Markdown',
+                  reply_markup: {
+                    inline_keyboard: [[
+                      { text: '✅ Sell Now', callback_data: `sell_tp:${order.id}` },
+                      { text: '❌ Ignore', callback_data: `tp_ignore:${order.id}` },
+                    ]],
+                  },
+                });
                 markOrderTpAlerted(order.id);
                 console.log(`[Order Monitor] Telegram take profit alert sent for ${order.symbol} (#${order.id})`);
               } catch (err) {
@@ -115,34 +126,35 @@ export async function checkLimitOrders(telegram = null) {
         console.log(`[Limit Order Monitor] Limit triggered! Executing order for ${details.symbol}`);
 
         const buyAmount = order.buy_amount_usd;
-        const tokenQty = currentPrice > 0 ? (buyAmount / currentPrice) : 0;
 
-        // 1. Create the regular order in DB
-        const newOrderId = createOrder({
-          address: order.address,
-          symbol: details.symbol || 'N/A',
-          name: details.name || 'N/A',
-          price_usd: currentPrice,
-          mcap: currentMcap,
-          type: 'dryrun',
-          buy_amount_usd: buyAmount,
-          token_qty: tokenQty
-        });
+        // 1. Execute buy via trader (dryrun records theoretical; live performs swap)
+        const result = await trader.executeBuy({ address: order.address, buyAmountUsd: buyAmount });
+        if (!result.ok) {
+          console.warn(`[Limit Order Monitor] Execution failed for ${order.address}: ${result.reason}. Limit order stays pending.`);
+          continue;
+        }
+        const newOrderId = result.order.id;
+        const tokenQty = result.order.token_qty;
+        const entryPrice = result.order.price_usd;
 
         // 2. Mark limit order as executed
         updateLimitOrderStatus(order.id, 'executed');
 
         // 3. Send Telegram Alert
         const targetId = SECRETS.TELEGRAM_CHAT_ID;
+        const limitModeLabel = isLiveMode() ? 'LIVE' : 'Dry Run';
 
-        let alertMsg = `🎯 *Limit Buy Order Executed (Dry Run)*\n\n`;
+        let alertMsg = `🎯 *Limit Buy Order Executed (${limitModeLabel})*\n\n`;
         alertMsg += `📦 *Order ID:* \`#${newOrderId}\` (Limit Order \`#${order.id}\` executed)\n`;
         alertMsg += `🪙 *Token:* \`${details.symbol || 'N/A'}\` (${details.name || 'N/A'})\n`;
         alertMsg += `🔗 *Address:* \`${order.address}\`\n`;
         alertMsg += `💵 *Initial Capital:* \`$${buyAmount.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
-        alertMsg += `💰 *Entry Price:* \`$${currentPrice.toFixed(8)}\`\n`;
+        alertMsg += `💰 *Entry Price:* \`$${entryPrice.toFixed(8)}\`\n`;
         alertMsg += `📊 *Trigger Mcap:* \`$${formatMcap(order.limit_mcap)}\` (Current: \`$${formatMcap(currentMcap)}\`)\n`;
-        alertMsg += `🚦 *Type:* \`dryrun\`\n`;
+        alertMsg += `🚦 *Mode:* \`${isLiveMode() ? 'live' : 'dryrun'}\`\n`;
+        if (result.order.signature) {
+          alertMsg += `🔁 *Tx:* [solscan](https://solscan.io/tx/${result.order.signature})\n`;
+        }
         alertMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
 
         if (telegram) {
