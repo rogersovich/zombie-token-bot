@@ -122,7 +122,7 @@ export async function checkLimitOrders(telegram = null) {
 
       console.log(`[Limit Order Monitor] Token Mcap: $${currentMcap.toLocaleString()} (Limit: $${order.limit_mcap.toLocaleString()})`);
 
-      if (currentMcap <= order.limit_mcap) {
+      if (currentMcap > 0 && currentMcap <= order.limit_mcap) {
         console.log(`[Limit Order Monitor] Limit triggered! Executing order for ${details.symbol}`);
 
         const buyAmount = order.buy_amount_usd;
