@@ -85,9 +85,59 @@ export function makeTrader(io) {
     return { ok: true, order: { id, token_qty: actualQty, price_usd: entryPrice, signature: result.signature } };
   }
 
-  // executeSell is added in Task 5.
-  async function executeSell() {
-    throw new Error('executeSell not implemented yet');
+  /**
+   * @param {{ orders: Array<object>, currentPriceUsd: number, currentMcap: number }} params
+   * @returns {Promise<{ ok: boolean, results?: Array<{ id: number, sellPrice: number, realizedUsd: number }>, reason?: string }>}
+   */
+  async function executeSell({ orders, currentPriceUsd, currentMcap }) {
+    if (!orders || orders.length === 0) {
+      return { ok: false, reason: 'No orders to sell' };
+    }
+    const address = orders[0].address;
+
+    if (!io.isLive) {
+      const results = orders.map((o) => {
+        io.closeOrder(o.id, currentPriceUsd, currentMcap, null, null);
+        const realizedUsd = o.token_qty * currentPriceUsd;
+        return { id: o.id, sellPrice: currentPriceUsd, realizedUsd };
+      });
+      return { ok: true, results };
+    }
+
+    // LIVE — single combined swap token -> SOL
+    const details = await io.searchAsset(address);
+    if (!details) {
+      return { ok: false, reason: 'Could not fetch token details for sell' };
+    }
+    const decimals = details.decimals ?? 0;
+    const totalQty = orders.reduce((sum, o) => sum + (o.token_qty || 0), 0);
+    const amountLamports = Math.floor(totalQty * Math.pow(10, decimals));
+
+    const result = await io.swap({
+      inputMint: address,
+      outputMint: io.solMint,
+      amountLamports,
+      slippageBps: io.config.maxSlippageBps,
+    });
+    if (!result.ok) {
+      return { ok: false, reason: result.reason || 'Swap failed' };
+    }
+
+    const solPrice = await io.getSolPriceUsd();
+    const totalSolOut = result.outAmount / LAMPORTS_PER_SOL;
+    const totalUsdOut = totalSolOut * solPrice;
+    const sellMcap = details.mcap || currentMcap || 0;
+
+    const results = orders.map((o) => {
+      const share = totalQty > 0 ? (o.token_qty / totalQty) : 0;
+      const orderSol = totalSolOut * share;
+      const realizedUsd = totalUsdOut * share;
+      const sellPrice = o.token_qty > 0 ? realizedUsd / o.token_qty : 0;
+      io.closeOrder(o.id, sellPrice, sellMcap, result.signature, orderSol);
+      return { id: o.id, sellPrice, realizedUsd };
+    });
+
+    return { ok: true, results, signature: result.signature };
   }
 
   return { executeBuy, executeSell };

@@ -101,3 +101,72 @@ test('live buy records nothing when swap fails', async () => {
   assert.equal(res.ok, false);
   assert.equal(recorded, false);
 });
+
+test('dryrun sell closes all orders without swapping', async () => {
+  let swapCalled = false;
+  const closed = [];
+  const io = baseIo({
+    isLive: false,
+    swap: async () => { swapCalled = true; return { ok: true }; },
+    closeOrder: (id, p, m, s, r) => closed.push({ id, p, s, r }),
+  });
+  const { executeSell } = makeTrader(io);
+
+  const orders = [
+    { id: 1, address: 'ADDR', token_qty: 5000, price_usd: 0.001, buy_amount_usd: 5 },
+    { id: 2, address: 'ADDR', token_qty: 5000, price_usd: 0.001, buy_amount_usd: 5 },
+  ];
+  const res = await executeSell({ orders, currentPriceUsd: 0.002, currentMcap: 6000 });
+
+  assert.equal(res.ok, true);
+  assert.equal(swapCalled, false);
+  assert.equal(closed.length, 2);
+  assert.equal(closed[0].s, null); // no sell signature in dryrun
+});
+
+test('live sell uses one combined swap and splits proceeds proportionally', async () => {
+  let swapCount = 0;
+  let swapInput = null;
+  const closed = [];
+  const io = baseIo({
+    isLive: true,
+    searchAsset: async () => ({ symbol: 'X', name: 'X', usdPrice: 0.002, mcap: 6000, decimals: 6 }),
+    getSolPriceUsd: async () => 50,
+    swap: async (p) => { swapCount++; swapInput = p; return { ok: true, signature: 'SIGSELL', inAmount: 10_000_000_000, outAmount: 400_000_000 }; },
+    closeOrder: (id, price, mcap, sig, sol) => closed.push({ id, price, sig, sol }),
+  });
+  const { executeSell } = makeTrader(io);
+
+  // two orders: qty 3000 and 1000 → total 4000; raw input = 4000 * 10^6
+  const orders = [
+    { id: 1, address: 'ADDR', token_qty: 3000, price_usd: 0.001, buy_amount_usd: 3 },
+    { id: 2, address: 'ADDR', token_qty: 1000, price_usd: 0.001, buy_amount_usd: 1 },
+  ];
+  const res = await executeSell({ orders, currentPriceUsd: 0.002, currentMcap: 6000 });
+
+  assert.equal(res.ok, true);
+  assert.equal(swapCount, 1); // single combined swap
+  assert.equal(swapInput.amountLamports, 4000 * 1_000_000);
+  assert.equal(closed.length, 2);
+  // outAmount 400_000_000 lamports = 0.4 SOL; split 75% / 25%
+  assert.ok(Math.abs(closed[0].sol - 0.3) < 1e-9);
+  assert.ok(Math.abs(closed[1].sol - 0.1) < 1e-9);
+  assert.equal(closed[0].sig, 'SIGSELL');
+});
+
+test('live sell failure keeps orders open (no close calls)', async () => {
+  const closed = [];
+  const io = baseIo({
+    isLive: true,
+    searchAsset: async () => ({ symbol: 'X', name: 'X', usdPrice: 0.002, mcap: 6000, decimals: 6 }),
+    swap: async () => ({ ok: false, reason: 'tx not landed' }),
+    closeOrder: (id) => closed.push(id),
+  });
+  const { executeSell } = makeTrader(io);
+
+  const orders = [{ id: 1, address: 'ADDR', token_qty: 5000, price_usd: 0.001, buy_amount_usd: 5 }];
+  const res = await executeSell({ orders, currentPriceUsd: 0.002, currentMcap: 6000 });
+
+  assert.equal(res.ok, false);
+  assert.equal(closed.length, 0);
+});
