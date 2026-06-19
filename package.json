@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "gen-wallet": "node src/genWallet.js"
   },
   "dependencies": {
     "@solana/web3.js": "^1.98.4",

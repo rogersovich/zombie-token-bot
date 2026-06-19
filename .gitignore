@@ -6,3 +6,4 @@ config.json
 *.csv
 logs/
 .DS_Store
+wallet_*.json
