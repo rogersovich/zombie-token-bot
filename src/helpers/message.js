@@ -22,6 +22,7 @@ export function buildSummaryMessage(tokens, totalCandidates) {
     message += `   • Current Mcap: \`$${t.current_mcap}\`\n`;
     message += `   • ATH Mcap: \`$${t.ath_mcap}\` (-${t.dump_percent}%)\n`;
     message += `   • Averages: 3D: \`$${t.avg_mcap_3d}\` | 7D: \`$${t.avg_mcap_7d}\` | 30D: \`$${t.avg_mcap_30d}\`\n`;
+    message += `   • Lowest: 7D: \`$${t.min_mcap_7d}\` | 30D: \`$${t.min_mcap_30d}\`\n`;
     message += `   • Max Tx Gap: \`${t.max_tx_gap_hours}h\` (Last: ${t.last_tx_time_wib})\n`;
     message += `   • Tx Count (24H): \`${t.buy_count_24h}x Buy | ${t.sell_count_24h}x Sell\`\n`;
     message += `   • Large Buy (1D): \`$${t.largest_buy_usd_1d}\` (Wallet: \`${t.largest_buy_wallet_1d}\` | Time: \`${t.largest_buy_time_wib_1d}\`)\n`;
@@ -47,6 +48,7 @@ export function buildSingleCheckMessage(t, config) {
   message += `• Current Mcap: \`$${t.current_mcap}\` ${t.passesFilters.mcap ? '✅' : `❌ (range $${(config.minMcap/1000).toFixed(1)}k - $${(config.maxMcap/1000).toFixed(1)}k)`}\n`;
   message += `• ATH Mcap: \`$${t.ath_mcap}\` (-${t.dump_percent}%) ${t.passesFilters.ath ? '✅' : `❌ (min $${(config.minAthMcap/1000).toFixed(1)}k)`}\n`;
   message += `• Averages: 3D: \`$${t.avg_mcap_3d}\` | 7D: \`$${t.avg_mcap_7d}\` | 30D: \`$${t.avg_mcap_30d}\`\n`;
+  message += `• Lowest: 7D: \`$${t.min_mcap_7d}\` | 30D: \`$${t.min_mcap_30d}\`\n`;
   message += `• Max Tx Gap: \`${t.max_tx_gap_hours}h\` (Last: ${t.last_tx_time_wib}) ${t.passesFilters.gap ? '✅' : '❌ (>24h gap)'}\n`;
   message += `• Tx Count (24H): \`${t.buy_count_24h}x Buy | ${t.sell_count_24h}x Sell\`\n`;
   message += `• Large Buy (1D): \`$${t.largest_buy_usd_1d}\` (Wallet: \`${t.largest_buy_wallet_1d}\` | Time: \`${t.largest_buy_time_wib_1d}\`)\n`;

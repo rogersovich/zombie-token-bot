@@ -243,6 +243,8 @@ async function analyzeMarketCap(address, ageDays) {
   let avg3d = 0;
   let avg7d = 0;
   let avg30d = 0;
+  let min7d = 0;
+  let min30d = 0;
 
   try {
     const dailyCandles = await fetchAllDailyCandles(address, ageDays);
@@ -251,8 +253,9 @@ async function analyzeMarketCap(address, ageDays) {
       // 1. Calculate ATH
       athMcap = Math.max(...dailyCandles.map(c => c.high || 0));
 
-      // 2. Calculate Averages from the latest candles
+      // 2. Calculate Averages and Minimums from the latest candles
       const closeValues = dailyCandles.map(c => c.close || 0);
+      const lowValues = dailyCandles.map(c => c.low || c.close || 0);
       const len = closeValues.length;
       const sum = (arr) => arr.reduce((acc, val) => acc + val, 0);
 
@@ -260,9 +263,15 @@ async function analyzeMarketCap(address, ageDays) {
       const last7 = closeValues.slice(Math.max(0, len - 7));
       const last30 = closeValues.slice(Math.max(0, len - 30));
 
+      const last7Lows = lowValues.slice(Math.max(0, len - 7));
+      const last30Lows = lowValues.slice(Math.max(0, len - 30));
+
       avg3d = last3.length > 0 ? sum(last3) / last3.length : 0;
       avg7d = last7.length > 0 ? sum(last7) / last7.length : 0;
       avg30d = last30.length > 0 ? sum(last30) / last30.length : 0;
+
+      min7d = last7Lows.length > 0 ? Math.min(...last7Lows) : 0;
+      min30d = last30Lows.length > 0 ? Math.min(...last30Lows) : 0;
     }
   } catch (error) {
     console.error(`[Monitor] Error analyzing market cap for ${address}:`, error.message);
@@ -272,7 +281,9 @@ async function analyzeMarketCap(address, ageDays) {
     athMcap,
     avg3d,
     avg7d,
-    avg30d
+    avg30d,
+    min7d,
+    min30d
   };
 }
 
@@ -371,6 +382,8 @@ export async function runScreening(maxTokensToProcess = null) {
           avg_mcap_3d: formatMcap(mcAnalysis.avg3d),
           avg_mcap_7d: formatMcap(mcAnalysis.avg7d),
           avg_mcap_30d: formatMcap(mcAnalysis.avg30d),
+          min_mcap_7d: formatMcap(mcAnalysis.min7d),
+          min_mcap_30d: formatMcap(mcAnalysis.min30d),
           max_tx_gap_hours: txValidation.maxGapHours.toFixed(1),
           last_tx_time_wib: formatToWIB(txValidation.lastTxTime),
           largest_buy_usd: txValidation.largestBuyUsd.toFixed(1),
@@ -420,6 +433,8 @@ export async function runScreening(maxTokensToProcess = null) {
       { key: 'avg_mcap_3d', label: 'Avg Mcap 3D ($)' },
       { key: 'avg_mcap_7d', label: 'Avg Mcap 7D ($)' },
       { key: 'avg_mcap_30d', label: 'Avg Mcap 30D ($)' },
+      { key: 'min_mcap_7d', label: 'Min Mcap 7D ($)' },
+      { key: 'min_mcap_30d', label: 'Min Mcap 30D ($)' },
       { key: 'max_tx_gap_hours', label: 'Max Tx Gap (Hours)' },
       { key: 'last_tx_time_wib', label: 'Last Tx (WIB)' },
       { key: 'largest_buy_usd', label: 'Largest Buy 7D ($)' },
@@ -490,6 +505,8 @@ export async function screenSingleToken(address) {
     avg_mcap_3d: formatMcap(mcAnalysis.avg3d),
     avg_mcap_7d: formatMcap(mcAnalysis.avg7d),
     avg_mcap_30d: formatMcap(mcAnalysis.avg30d),
+    min_mcap_7d: formatMcap(mcAnalysis.min7d),
+    min_mcap_30d: formatMcap(mcAnalysis.min30d),
     max_tx_gap_hours: txValidation.maxGapHours.toFixed(1),
     last_tx_time_wib: formatToWIB(txValidation.lastTxTime),
     largest_buy_usd: txValidation.largestBuyUsd.toFixed(1),
