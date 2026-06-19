@@ -45,6 +45,9 @@ export const SECRETS = {
   TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
   TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID,
   CRON_SCHEDULE: generatedCron,
+  TRADING_MODE: (process.env.TRADING_MODE || 'dryrun').toLowerCase(),
+  SOLANA_RPC_URL: process.env.SOLANA_RPC_URL,
+  WALLET_PRIVATE_KEY: process.env.WALLET_PRIVATE_KEY,
 };
 
 export const CONFIG = {
@@ -59,7 +62,36 @@ export const CONFIG = {
   cronOrderMonitorHours: Number(appConfig.cron_order_monitor_hours ?? 1),
   defaultBuyAmountUsd: Number(appConfig.default_buy_amount_usd ?? 5),
   minTakeProfitPercent: Number(appConfig.min_take_profit_percent ?? 50),
+  maxBuyUsd: Number(appConfig.max_buy_usd ?? 10),
+  minSolReserve: Number(appConfig.min_sol_reserve ?? 0.05),
+  maxSlippageBps: Number(appConfig.max_slippage_bps ?? 300),
+  priorityFeeLamports: Number(appConfig.priority_fee_lamports ?? 100000),
 };
+
+/**
+ * @returns {boolean} true when running in live trading mode.
+ */
+export function isLiveMode() {
+  return SECRETS.TRADING_MODE === 'live';
+}
+
+/**
+ * Validates that live-mode secrets are present.
+ * In dryrun mode it always passes.
+ * @returns {{ ok: boolean, reason: string|null }}
+ */
+export function validateLiveConfig() {
+  if (!isLiveMode()) {
+    return { ok: true, reason: null };
+  }
+  if (!SECRETS.SOLANA_RPC_URL) {
+    return { ok: false, reason: 'TRADING_MODE=live but SOLANA_RPC_URL is missing' };
+  }
+  if (!SECRETS.WALLET_PRIVATE_KEY) {
+    return { ok: false, reason: 'TRADING_MODE=live but WALLET_PRIVATE_KEY is missing' };
+  }
+  return { ok: true, reason: null };
+}
 
 export default {
   SECRETS,

@@ -9,5 +9,9 @@
   "min_largest_buy_usd": 5,
   "cron_order_monitor_hours": 1,
   "default_buy_amount_usd": 5,
-  "min_take_profit_percent": 50
+  "min_take_profit_percent": 50,
+  "max_buy_usd": 10,
+  "min_sol_reserve": 0.05,
+  "max_slippage_bps": 300,
+  "priority_fee_lamports": 100000
 }
