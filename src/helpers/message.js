@@ -97,11 +97,11 @@ export function buildPnLMessage(orders, config = null) {
 
     message += `${i + 1}. *${o.symbol}* (${o.name}) \`[${typeStr} #${o.id}]\`\n`;
     message += `   • Address: \`${o.address}\`\n`;
-    message += `   • Initial Capital: \`$${modalUsd.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
+    message += `   • Initial Capital: \`$${modalUsd.toFixed(4)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 4 })} tokens)\n`;
     message += `   • Buy Price: \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${o.mcap ? formatMcap(o.mcap) : 'N/A'}\`)\n`;
     message += `   • ${priceLabel}: \`$${currentPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? formatMcap(currentMcap) : 'N/A'}\`)\n`;
-    message += `   • ${valueLabel}: \`$${currentValueUsd.toFixed(2)}\`\n`;
-    message += `   • PnL: ${statusEmoji} \`${sign}${priceChangePct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)${tpMarker}\n`;
+    message += `   • ${valueLabel}: \`$${currentValueUsd.toFixed(4)}\`\n`;
+    message += `   • PnL: ${statusEmoji} \`${sign}${priceChangePct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(4)}\`)${tpMarker}\n`;
     message += `   • Purchased At: \`${formatToWIB(o.created_at)}\`\n`;
     if (o.updated_at) {
       const updatedLabel = isSold ? 'Sold At' : 'Last Updated';

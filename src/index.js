@@ -300,7 +300,7 @@ bot.command('buy', async (ctx) => {
     successMsg += `📦 *Order ID:* \`#${o.id}\`\n`;
     successMsg += `🪙 *Token:* \`${details.symbol || 'N/A'}\` (${details.name || 'N/A'})\n`;
     successMsg += `🔗 *Address:* \`${address}\`\n`;
-    successMsg += `💵 *Initial Capital:* \`$${buyAmount.toFixed(2)}\` (${o.token_qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
+    successMsg += `💵 *Initial Capital:* \`$${buyAmount.toFixed(4)}\` (${o.token_qty.toLocaleString(undefined, { maximumFractionDigits: 4 })} tokens)\n`;
     successMsg += `💰 *Entry Price:* \`$${o.price_usd.toFixed(8)}\`\n`;
     successMsg += `📊 *Market Cap:* \`$${formatMcap(details.mcap || 0)}\`\n`;
     successMsg += `🚦 *Mode:* \`${isLiveMode() ? 'live' : 'dryrun'}\`\n`;
@@ -592,15 +592,15 @@ async function handleManualTakeProfit(ctx) {
       totalCapital += modalUsd;
       totalRealized += pnlUsd;
       msg += `${idx + 1}. *Order #${r.id}*\n`;
-      msg += `   • Capital: \`$${modalUsd.toFixed(2)}\`\n`;
+      msg += `   • Capital: \`$${modalUsd.toFixed(4)}\`\n`;
       msg += `   • Sell Price: \`$${r.sellPrice.toFixed(8)}\`\n`;
-      msg += `   • Realized: \`$${r.realizedUsd.toFixed(2)}\`\n`;
-      msg += `   • PnL: \`${sign}${pct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)\n\n`;
+      msg += `   • Realized: \`$${r.realizedUsd.toFixed(4)}\`\n`;
+      msg += `   • PnL: \`${sign}${pct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(4)}\`)\n\n`;
     });
 
     const totalPct = totalCapital > 0 ? (totalRealized / totalCapital) * 100 : 0;
     const totalSign = totalRealized >= 0 ? '+' : '';
-    msg += `📊 *Total PnL:* \`${totalSign}${totalPct.toFixed(2)}%\` (\`${totalSign}$${totalRealized.toFixed(2)}\`)\n`;
+    msg += `📊 *Total PnL:* \`${totalSign}${totalPct.toFixed(2)}%\` (\`${totalSign}$${totalRealized.toFixed(4)}\`)\n`;
 
     await sendSplitMessage(ctx, null, msg, { parse_mode: 'Markdown', disable_web_page_preview: true });
   } catch (error) {
@@ -656,8 +656,8 @@ bot.action(/^sell_tp:(\d+)$/, async (ctx) => {
     msg += `📦 *Order ID:* \`#${order.id}\`\n`;
     msg += `🪙 *Token:* \`${order.symbol || 'N/A'}\`\n`;
     msg += `📈 *Sell Price:* \`$${r.sellPrice.toFixed(8)}\`\n`;
-    msg += `💵 *Realized:* \`$${r.realizedUsd.toFixed(2)}\`\n`;
-    msg += `🟢 *PnL:* \`${sign}${pct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)\n`;
+    msg += `💵 *Realized:* \`$${r.realizedUsd.toFixed(4)}\`\n`;
+    msg += `🟢 *PnL:* \`${sign}${pct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(4)}\`)\n`;
     if (result.signature) {
       msg += `🔁 *Tx:* [solscan](https://solscan.io/tx/${result.signature})\n`;
     }
