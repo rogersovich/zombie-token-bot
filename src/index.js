@@ -140,19 +140,23 @@ async function executeScreeningAndSend(ctx = null) {
 
 // Command Listeners
 bot.start((ctx) => {
+  const modeLabel = isLiveMode() ? '🔴 LIVE (Real Swaps)' : '🟢 DRY RUN (Paper Trading)';
+  const modeDesc = isLiveMode() ? 'live' : 'dryrun';
+  
   let welcome = `👋 Welcome to *Solana Zombie Token Monitor Bot*!\n\n`;
+  welcome += `🚦 *Current Trading Mode:* \`${modeLabel}\`\n\n`;
   welcome += `This bot monitors tokens that once reached a high ATH but are currently dormant (accumulating), while still showing daily transaction activity.\n\n`;
   welcome += `*Command Menu:*\n`;
   welcome += `🔹 /screen - Run manual screening now\n`;
   welcome += `🔹 /status - Check current bot filter configuration\n`;
   welcome += `🔹 /check {CA} - Check token details directly\n`;
   welcome += `🔹 /alerts - List all screened tokens in database\n`;
-  welcome += `🔹 /buy {CA} [modal_usd] - Record mock token purchase (dryrun)\n`;
-  welcome += `🔹 /buy_limit {CA} {limit_mcap} [modal_usd] - Set limit buy order (dryrun)\n`;
+  welcome += `🔹 /buy {CA} [modal_usd] - Execute buy order (${modeDesc})\n`;
+  welcome += `🔹 /buy_limit {CA} {limit_mcap} [modal_usd] - Set limit buy order (${modeDesc})\n`;
   welcome += `🔹 /limit_list - List all pending limit buy orders\n`;
   welcome += `🔹 /limit_cancel {limit_order_id} - Cancel a pending limit buy order\n`;
   welcome += `🔹 /pnl [CA] - Check order PnL report\n`;
-  welcome += `🔹 /sell {CA|order_id} [all] - Manually Take Profit on an order\n`;
+  welcome += `🔹 /sell {CA|order_id} [all] - Manually Take Profit on an order (${modeDesc})\n`;
   welcome += `🔹 /tp {CA|order_id} [all] - Alias for /sell\n`;
   ctx.replyWithMarkdown(welcome);
 });
