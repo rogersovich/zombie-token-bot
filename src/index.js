@@ -6,7 +6,7 @@ import { SECRETS, CONFIG } from './config.js';
 import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
 import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage, buildLimitOrdersMessage, buildAlertsMessage } from './helpers/message.js';
-import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts, getBoughtAddresses, getPendingLimitAddresses } from './db.js';
+import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts, getBoughtAddresses, getPendingLimitAddresses, getOpenOrdersByAddress, getOrderById, closeOrder } from './db.js';
 import jupApi from './jupApi.js';
 import { monitorOrders } from './orderMonitor.js';
 import { formatMcap } from './helpers/format.js';
@@ -141,6 +141,8 @@ bot.start((ctx) => {
   welcome += `🔹 /limit_list - List all pending limit buy orders\n`;
   welcome += `🔹 /limit_cancel {limit_order_id} - Cancel a pending limit buy order\n`;
   welcome += `🔹 /pnl [CA] - Check order PnL report\n`;
+  welcome += `🔹 /sell {CA|order_id} [all] - Manually Take Profit on an order\n`;
+  welcome += `🔹 /tp {CA|order_id} [all] - Alias for /sell\n`;
   ctx.replyWithMarkdown(welcome);
 });
 
@@ -496,6 +498,173 @@ bot.command('pnl', async (ctx) => {
     }
   }
 });
+
+// Manual Take Profit commands (sell / tp)
+async function handleManualTakeProfit(ctx) {
+  const args = ctx.message.text.split(' ').slice(1);
+  const input = args[0]?.trim();
+  const option = args[1]?.trim()?.toLowerCase();
+
+  if (!input) {
+    let errorMsg = `⚠️ *Invalid format.*\nPlease specify a contract address or order ID.\n\n`;
+    errorMsg += `*Examples:*\n`;
+    errorMsg += `• Sell by Order ID: \`/sell 5\`\n`;
+    errorMsg += `• Sell by Address: \`/sell 3ne9Q...ZGpump\`\n`;
+    errorMsg += `• Sell all active orders for an address: \`/sell 3ne9Q...ZGpump all\``;
+    return ctx.replyWithMarkdown(errorMsg);
+  }
+
+  const statusMsg = await ctx.reply('🛒 Processing manual take profit, please wait...');
+
+  try {
+    const orderId = parseInt(input);
+
+    if (!isNaN(orderId)) {
+      // 1. Process by Order ID
+      const order = getOrderById(orderId);
+      if (!order) {
+        await ctx.reply(`❌ Order \`#${orderId}\` not found in database.`);
+        return;
+      }
+      if (order.status === 'sold') {
+        await ctx.reply(`❌ Order \`#${orderId}\` is already sold/closed.`);
+        return;
+      }
+
+      // Fetch current price
+      const details = await jupApi.searchAsset(order.address);
+      const sellPrice = details?.usdPrice || order.current_price_usd || order.price_usd;
+      const sellMcap = details?.mcap || order.current_mcap || order.mcap;
+
+      // Close the order
+      closeOrder(order.id, sellPrice, sellMcap);
+
+      // Calculate PnL
+      const buyPrice = order.price_usd || 0;
+      const priceChangePct = buyPrice > 0 ? ((sellPrice - buyPrice) / buyPrice) * 100 : 0;
+      const modalUsd = order.buy_amount_usd || 0;
+      const currentValueUsd = order.token_qty * sellPrice;
+      const pnlUsd = currentValueUsd - modalUsd;
+      const sign = priceChangePct >= 0 ? '+' : '';
+
+      let successMsg = `✅ *Manual Take Profit Success*\n\n`;
+      successMsg += `📦 *Order ID:* \`#${order.id}\`\n`;
+      successMsg += `🪙 *Token:* \`${order.symbol || 'N/A'}\` (${order.name || 'N/A'})\n`;
+      successMsg += `🔗 *Address:* \`${order.address}\`\n`;
+      successMsg += `💵 *Initial Capital:* \`$${modalUsd.toFixed(2)}\` (${order.token_qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
+      successMsg += `💰 *Entry Price:* \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${order.mcap ? formatMcap(order.mcap) : 'N/A'}\`)\n`;
+      successMsg += `📈 *Sell Price:* \`$${sellPrice.toFixed(8)}\` (Mcap: \`$${sellMcap ? formatMcap(sellMcap) : 'N/A'}\`)\n`;
+      successMsg += `🟢 *Realized PnL:* \`${sign}${priceChangePct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)\n`;
+      successMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
+
+      await ctx.replyWithMarkdown(successMsg, { disable_web_page_preview: true });
+    } else {
+      // 2. Process by Contract Address
+      const address = input;
+      const openOrders = getOpenOrdersByAddress(address);
+
+      if (openOrders.length === 0) {
+        await ctx.reply(`❌ No active/open orders found for address: \`${address}\``);
+        return;
+      }
+
+      // Fetch current price once
+      const details = await jupApi.searchAsset(address);
+      if (!details) {
+        await ctx.reply(`❌ Could not fetch latest price for address: \`${address}\`. Sell failed.`);
+        return;
+      }
+      const sellPrice = details.usdPrice || 0;
+      const sellMcap = details.mcap || 0;
+
+      if (openOrders.length === 1 && option !== 'all') {
+        // Only one active order: sell it immediately
+        const order = openOrders[0];
+        closeOrder(order.id, sellPrice, sellMcap);
+
+        const buyPrice = order.price_usd || 0;
+        const priceChangePct = buyPrice > 0 ? ((sellPrice - buyPrice) / buyPrice) * 100 : 0;
+        const modalUsd = order.buy_amount_usd || 0;
+        const currentValueUsd = order.token_qty * sellPrice;
+        const pnlUsd = currentValueUsd - modalUsd;
+        const sign = priceChangePct >= 0 ? '+' : '';
+
+        let successMsg = `✅ *Manual Take Profit Success*\n\n`;
+        successMsg += `📦 *Order ID:* \`#${order.id}\`\n`;
+        successMsg += `🪙 *Token:* \`${order.symbol || 'N/A'}\` (${order.name || 'N/A'})\n`;
+        successMsg += `🔗 *Address:* \`${order.address}\`\n`;
+        successMsg += `💵 *Initial Capital:* \`$${modalUsd.toFixed(2)}\` (${order.token_qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
+        successMsg += `💰 *Entry Price:* \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${order.mcap ? formatMcap(order.mcap) : 'N/A'}\`)\n`;
+        successMsg += `📈 *Sell Price:* \`$${sellPrice.toFixed(8)}\` (Mcap: \`$${sellMcap ? formatMcap(sellMcap) : 'N/A'}\`)\n`;
+        successMsg += `🟢 *Realized PnL:* \`${sign}${priceChangePct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)\n`;
+        successMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
+
+        await ctx.replyWithMarkdown(successMsg, { disable_web_page_preview: true });
+      } else {
+        // Multiple orders exist, or option is 'all'
+        if (option === 'all') {
+          // Sell all orders for this address
+          let summaryMsg = `✅ *Manual Take Profit Success (All Orders)*\n\n`;
+          summaryMsg += `🪙 *Token:* \`${details.symbol || 'N/A'}\` (${details.name || 'N/A'})\n`;
+          summaryMsg += `🔗 *Address:* \`${address}\`\n`;
+          summaryMsg += `📈 *Sell Price:* \`$${sellPrice.toFixed(8)}\` (Mcap: \`$${formatMcap(sellMcap)}\`)\n`;
+          summaryMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n\n`;
+
+          let totalCapital = 0;
+          let totalPnL = 0;
+
+          openOrders.forEach((order, idx) => {
+            closeOrder(order.id, sellPrice, sellMcap);
+            const buyPrice = order.price_usd || 0;
+            const priceChangePct = buyPrice > 0 ? ((sellPrice - buyPrice) / buyPrice) * 100 : 0;
+            const modalUsd = order.buy_amount_usd || 0;
+            const currentValueUsd = order.token_qty * sellPrice;
+            const pnlUsd = currentValueUsd - modalUsd;
+            const sign = priceChangePct >= 0 ? '+' : '';
+
+            totalCapital += modalUsd;
+            totalPnL += pnlUsd;
+
+            summaryMsg += `${idx + 1}. *Order #${order.id}*\n`;
+            summaryMsg += `   • Capital: \`$${modalUsd.toFixed(2)}\`\n`;
+            summaryMsg += `   • Entry: \`$${buyPrice.toFixed(8)}\`\n`;
+            summaryMsg += `   • PnL: \`${sign}${priceChangePct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)\n\n`;
+          });
+
+          const totalPnLPct = totalCapital > 0 ? (totalPnL / totalCapital) * 100 : 0;
+          const totalSign = totalPnL >= 0 ? '+' : '';
+
+          summaryMsg += `📊 *Total Portfolio PnL:* \`${totalSign}${totalPnLPct.toFixed(2)}%\` (\`${totalSign}$${totalPnL.toFixed(2)}\`)\n`;
+
+          await sendSplitMessage(ctx, null, summaryMsg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+        } else {
+          // List them and tell the user to select one or use "all"
+          let listMsg = `⚠️ *Multiple active orders found for this token:*\n\n`;
+          openOrders.forEach((o, i) => {
+            listMsg += `${i + 1}. *Order #${o.id}*\n`;
+            listMsg += `   • Initial Capital: \`$${o.buy_amount_usd.toFixed(2)}\` (${o.token_qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
+            listMsg += `   • Entry Price: \`$${o.price_usd.toFixed(8)}\`\n`;
+            listMsg += `   • Created At: \`${formatToWIB(o.created_at)}\`\n\n`;
+          });
+          listMsg += `To sell a specific order, run:\n\`/sell {order_id}\` (e.g. \`/sell ${openOrders[0].id}\`)\n\n`;
+          listMsg += `To sell ALL active orders for this token, run:\n\`/sell ${address} all\``;
+          
+          await ctx.replyWithMarkdown(listMsg, { disable_web_page_preview: true });
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[App] Sell/TP command error:', error.message);
+    await ctx.reply(`❌ An error occurred during manual Take Profit: ${error.message}`);
+  } finally {
+    if (statusMsg) {
+      await ctx.deleteMessage(statusMsg.message_id).catch(() => {});
+    }
+  }
+}
+
+bot.command('sell', handleManualTakeProfit);
+bot.command('tp', handleManualTakeProfit);
 
 // Start scheduler immediately (independently of bot.launch)
 const startupTime = formatToWIB(Date.now());

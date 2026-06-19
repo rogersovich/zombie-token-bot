@@ -1,7 +1,7 @@
 import jupApi from './jupApi.js';
-import { getAllOrders, updateOrderPrice, getPendingLimitOrders, createOrder, updateLimitOrderStatus } from './db.js';
+import { getOpenOrders, updateOrderPrice, getPendingLimitOrders, createOrder, updateLimitOrderStatus, markOrderTpAlerted } from './db.js';
 import { formatToWIB } from './helpers/time.js';
-import { SECRETS } from './config.js';
+import { SECRETS, CONFIG } from './config.js';
 import { formatMcap } from './helpers/format.js';
 
 /**
@@ -15,7 +15,7 @@ export async function monitorOrders() {
   await checkLimitOrders();
 
   // 2. Update prices for regular orders
-  const orders = getAllOrders();
+  const orders = getOpenOrders();
   if (orders.length > 0) {
     console.log(`[Order Monitor] Found ${orders.length} order(s) to check.`);
     for (const order of orders) {
@@ -28,6 +28,47 @@ export async function monitorOrders() {
 
           updateOrderPrice(order.id, currentPrice, currentMcap);
           console.log(`[Order Monitor] Updated ${order.symbol} (#${order.id}): Price = $${currentPrice.toFixed(8)}, Mcap = $${formatMcap(currentMcap)}`);
+
+          // Check if Take Profit percentage is achieved and not yet alerted
+          const buyPrice = order.price_usd || 0;
+          const priceChangePct = buyPrice > 0 ? ((currentPrice - buyPrice) / buyPrice) * 100 : 0;
+          const minTp = CONFIG.minTakeProfitPercent ?? 50;
+
+          if (priceChangePct >= minTp && !order.tp_alerted) {
+            console.log(`[Order Monitor] Take Profit met for ${order.symbol} (#${order.id}): ${priceChangePct.toFixed(2)}% >= ${minTp}%`);
+            
+            const targetId = SECRETS.TELEGRAM_CHAT_ID;
+            const url = `https://api.telegram.org/bot${SECRETS.TELEGRAM_BOT_TOKEN}/sendMessage`;
+            const modalUsd = order.buy_amount_usd || 0;
+            const tokenQty = order.token_qty || 0;
+            const currentValueUsd = tokenQty * currentPrice;
+            const pnlUsd = currentValueUsd - modalUsd;
+
+            let alertMsg = `🎯 *Take Profit Achieved! (Dry Run)*\n\n`;
+            alertMsg += `📦 *Order ID:* \`#${order.id}\`\n`;
+            alertMsg += `🪙 *Token:* \`${order.symbol || 'N/A'}\` (${order.name || 'N/A'})\n`;
+            alertMsg += `🔗 *Address:* \`${order.address}\`\n`;
+            alertMsg += `💵 *Initial Capital:* \`$${modalUsd.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
+            alertMsg += `💰 *Entry Price:* \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${order.mcap ? formatMcap(order.mcap) : 'N/A'}\`)\n`;
+            alertMsg += `📈 *Current Price:* \`$${currentPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? formatMcap(currentMcap) : 'N/A'}\`)\n`;
+            alertMsg += `🟢 *PnL:* \`+${priceChangePct.toFixed(2)}%\` (\`+$${pnlUsd.toFixed(2)}\`)\n`;
+            alertMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
+
+            await fetch(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                chat_id: targetId,
+                text: alertMsg,
+                parse_mode: 'Markdown'
+              })
+            })
+            .then(() => {
+              markOrderTpAlerted(order.id);
+              console.log(`[Order Monitor] Telegram take profit alert sent for ${order.symbol} (#${order.id})`);
+            })
+            .catch(err => console.error('[Order Monitor] Telegram notification failed:', err.message));
+          }
         } else {
           console.warn(`[Order Monitor] Could not fetch details for ${order.symbol} (${order.address}).`);
         }

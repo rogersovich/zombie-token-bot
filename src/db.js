@@ -24,7 +24,9 @@ db.exec(`
     current_mcap REAL,
     updated_at INTEGER,
     buy_amount_usd REAL,
-    token_qty REAL
+    token_qty REAL,
+    tp_alerted INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'open'
   );
 
   CREATE TABLE IF NOT EXISTS limit_orders (
@@ -52,6 +54,12 @@ try {
 } catch (_) {}
 try {
   db.exec('ALTER TABLE orders ADD COLUMN token_qty REAL');
+} catch (_) {}
+try {
+  db.exec('ALTER TABLE orders ADD COLUMN tp_alerted INTEGER DEFAULT 0');
+} catch (_) {}
+try {
+  db.exec("ALTER TABLE orders ADD COLUMN status TEXT DEFAULT 'open'");
 } catch (_) {}
 
 /**
@@ -206,6 +214,56 @@ export function getPendingLimitAddresses() {
 export function clearOldAlerts() {
   const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
   db.prepare('DELETE FROM token_alerts WHERE alerted_at < ?').run(oneWeekAgo);
+}
+
+/**
+ * Updates the tp_alerted flag for an order to prevent duplicate notifications.
+ * @param {number} id
+ * @param {number} status
+ */
+export function markOrderTpAlerted(id, status = 1) {
+  db.prepare('UPDATE orders SET tp_alerted = ? WHERE id = ?').run(status, id);
+}
+
+/**
+ * Retrieves all active orders.
+ * @returns {Array<Object>}
+ */
+export function getOpenOrders() {
+  return db.prepare("SELECT * FROM orders WHERE status = 'open' ORDER BY created_at DESC").all();
+}
+
+/**
+ * Retrieves active orders by address.
+ * @param {string} address
+ * @returns {Array<Object>}
+ */
+export function getOpenOrdersByAddress(address) {
+  return db.prepare("SELECT * FROM orders WHERE address = ? AND status = 'open' ORDER BY created_at DESC").all(address);
+}
+
+/**
+ * Fetches an order by its ID.
+ * @param {number} id
+ * @returns {Object|undefined}
+ */
+export function getOrderById(id) {
+  return db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+}
+
+/**
+ * Closes an order by marking its status as 'sold' and updating final price and timestamp.
+ * @param {number} id
+ * @param {number} sellPriceUsd
+ * @param {number} sellMcap
+ */
+export function closeOrder(id, sellPriceUsd, sellMcap) {
+  const now = Date.now();
+  db.prepare(`
+    UPDATE orders 
+    SET status = 'sold', current_price_usd = ?, current_mcap = ?, updated_at = ?
+    WHERE id = ?
+  `).run(sellPriceUsd, sellMcap, now, id);
 }
 
 export default db;

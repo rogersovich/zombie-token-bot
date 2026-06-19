@@ -83,21 +83,29 @@ export function buildPnLMessage(orders, config = null) {
 
     const minTp = config?.minTakeProfitPercent ?? 50;
     const tpAchieved = priceChangePct >= minTp;
-    const tpMarker = tpAchieved ? ' 🎯 *Take Profit Achieved!*' : '';
+    const isSold = o.status === 'sold';
+    const typeStr = isSold ? 'SOLD' : o.type.toUpperCase();
+    const tpMarker = isSold 
+      ? ' 🚪 *Realized*' 
+      : (tpAchieved ? ' 🎯 *Take Profit Achieved!*' : '');
 
     const statusEmoji = priceChangePct >= 0 ? '🟢' : '🔴';
     const sign = priceChangePct >= 0 ? '+' : '';
 
-    message += `${i + 1}. *${o.symbol}* (${o.name}) \`[${o.type.toUpperCase()}]\`\n`;
+    const priceLabel = isSold ? 'Sell Price' : 'Current Price';
+    const valueLabel = isSold ? 'Realized Value' : 'Current Value';
+
+    message += `${i + 1}. *${o.symbol}* (${o.name}) \`[${typeStr}]\`\n`;
     message += `   • Address: \`${o.address}\`\n`;
     message += `   • Initial Capital: \`$${modalUsd.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
     message += `   • Buy Price: \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${o.mcap ? formatMcap(o.mcap) : 'N/A'}\`)\n`;
-    message += `   • Current Price: \`$${currentPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? formatMcap(currentMcap) : 'N/A'}\`)\n`;
-    message += `   • Current Value: \`$${currentValueUsd.toFixed(2)}\`\n`;
+    message += `   • ${priceLabel}: \`$${currentPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? formatMcap(currentMcap) : 'N/A'}\`)\n`;
+    message += `   • ${valueLabel}: \`$${currentValueUsd.toFixed(2)}\`\n`;
     message += `   • PnL: ${statusEmoji} \`${sign}${priceChangePct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)${tpMarker}\n`;
     message += `   • Purchased At: \`${formatToWIB(o.created_at)}\`\n`;
     if (o.updated_at) {
-      message += `   • Last Updated: \`${formatToWIB(o.updated_at)}\`\n`;
+      const updatedLabel = isSold ? 'Sold At' : 'Last Updated';
+      message += `   • ${updatedLabel}: \`${formatToWIB(o.updated_at)}\`\n`;
     }
     message += `\n`;
   });
