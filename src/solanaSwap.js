@@ -2,7 +2,7 @@
  * Solana on-chain swap module (Jupiter aggregator).
  * Pure: does NOT import db or telegram.
  */
-import { Connection, Keypair, VersionedTransaction } from '@solana/web3.js';
+import { Connection, Keypair, VersionedTransaction, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
 import { SECRETS, CONFIG } from './config.js';
 import jupApi from './jupApi.js';
@@ -111,4 +111,24 @@ export async function swap({ inputMint, outputMint, amountLamports, slippageBps 
   }
 }
 
-export default { lamportsForUsd, exceedsSlippage, getSolPriceUsd, getSolBalance, swap, SOL_MINT };
+/**
+ * Gets the balance of a specific token mint in the wallet.
+ * @param {string} tokenMintAddress
+ * @returns {Promise<number>} token balance in raw lamports (integer)
+ */
+export async function getTokenBalance(tokenMintAddress) {
+  const { connection, wallet } = init();
+  try {
+    const res = await connection.getTokenAccountsByOwner(wallet.publicKey, {
+      mint: new PublicKey(tokenMintAddress),
+    });
+    if (res.value.length === 0) return 0;
+    const balRes = await connection.getTokenAccountBalance(res.value[0].pubkey);
+    return Number(balRes.value.amount || 0);
+  } catch (err) {
+    console.error(`[solanaSwap] Failed to get token balance for ${tokenMintAddress}:`, err.message);
+    return 0;
+  }
+}
+
+export default { lamportsForUsd, exceedsSlippage, getSolPriceUsd, getSolBalance, swap, getTokenBalance, SOL_MINT };

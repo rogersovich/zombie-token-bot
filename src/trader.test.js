@@ -12,6 +12,7 @@ function baseIo(overrides = {}) {
     swap: async () => ({ ok: true, signature: 'SIG', inAmount: 100_000_000, outAmount: 5_000_000_000 }),
     getSolPriceUsd: async () => 50,
     getSolBalance: async () => 1 * LAMPORTS_PER_SOL,
+    getTokenBalance: async () => 10_000_000_000,
     lamportsForUsd: (usd, price) => Math.floor((usd / price) * LAMPORTS_PER_SOL),
     solMint: 'SOL',
     createOrder: () => 1,
@@ -169,4 +170,36 @@ test('live sell failure keeps orders open (no close calls)', async () => {
 
   assert.equal(res.ok, false);
   assert.equal(closed.length, 0);
+});
+
+test('live sell swaps actual token balance when it is less than db qty (slippage/fee mitigation)', async () => {
+  let swapInput = null;
+  const io = baseIo({
+    isLive: true,
+    searchAsset: async () => ({ symbol: 'X', name: 'X', usdPrice: 0.002, mcap: 6000, decimals: 6 }),
+    getTokenBalance: async () => 4_500_000, // 4.5 tokens, less than DB 5.0 tokens
+    swap: async (p) => { swapInput = p; return { ok: true, signature: 'SIG', inAmount: 4_500_000, outAmount: 100_000 }; },
+  });
+  const { executeSell } = makeTrader(io);
+
+  const orders = [{ id: 1, address: 'ADDR', token_qty: 5, price_usd: 0.001, buy_amount_usd: 5 }];
+  const res = await executeSell({ orders, currentPriceUsd: 0.002, currentMcap: 6000 });
+
+  assert.equal(res.ok, true);
+  assert.equal(swapInput.amountLamports, 4_500_000); // limited to on-chain balance
+});
+
+test('live sell fails when on-chain token balance is 0', async () => {
+  const io = baseIo({
+    isLive: true,
+    searchAsset: async () => ({ symbol: 'X', name: 'X', usdPrice: 0.002, mcap: 6000, decimals: 6 }),
+    getTokenBalance: async () => 0,
+  });
+  const { executeSell } = makeTrader(io);
+
+  const orders = [{ id: 1, address: 'ADDR', token_qty: 5, price_usd: 0.001, buy_amount_usd: 5 }];
+  const res = await executeSell({ orders, currentPriceUsd: 0.002, currentMcap: 6000 });
+
+  assert.equal(res.ok, false);
+  assert.match(res.reason, /No token balance found on-chain/i);
 });

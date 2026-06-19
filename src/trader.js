@@ -111,7 +111,18 @@ export function makeTrader(io) {
     }
     const decimals = details.decimals ?? 0;
     const totalQty = orders.reduce((sum, o) => sum + (o.token_qty || 0), 0);
-    const amountLamports = Math.floor(totalQty * Math.pow(10, decimals));
+    const amountLamportsFromDb = Math.floor(totalQty * Math.pow(10, decimals));
+
+    // Fetch actual on-chain balance to prevent InsufficientFunds from slippage/fee mismatch
+    const actualBalanceLamports = await io.getTokenBalance(address);
+    if (actualBalanceLamports === 0) {
+      return { ok: false, reason: 'No token balance found on-chain to sell' };
+    }
+
+    const amountLamports = Math.min(actualBalanceLamports, amountLamportsFromDb);
+    if (amountLamports <= 0) {
+      return { ok: false, reason: 'Swap amount is zero or negative' };
+    }
 
     const result = await io.swap({
       inputMint: address,
@@ -154,6 +165,7 @@ const realIo = {
   swap: (params) => solanaSwap.swap(params),
   getSolPriceUsd: () => solanaSwap.getSolPriceUsd(),
   getSolBalance: () => solanaSwap.getSolBalance(),
+  getTokenBalance: (address) => solanaSwap.getTokenBalance(address),
   lamportsForUsd: (usd, price) => solanaSwap.lamportsForUsd(usd, price),
   solMint: solanaSwap.SOL_MINT,
   createOrder: (o) => createOrder(o),
