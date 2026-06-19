@@ -95,7 +95,7 @@ export function buildPnLMessage(orders, config = null) {
     const priceLabel = isSold ? 'Sell Price' : 'Current Price';
     const valueLabel = isSold ? 'Realized Value' : 'Current Value';
 
-    message += `${i + 1}. *${o.symbol}* (${o.name}) \`[${typeStr}]\`\n`;
+    message += `${i + 1}. *${o.symbol}* (${o.name}) \`[${typeStr} #${o.id}]\`\n`;
     message += `   • Address: \`${o.address}\`\n`;
     message += `   • Initial Capital: \`$${modalUsd.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
     message += `   • Buy Price: \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${o.mcap ? formatMcap(o.mcap) : 'N/A'}\`)\n`;
