@@ -5,10 +5,12 @@ import { SECRETS, CONFIG } from './config.js';
 import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
 import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage, buildLimitOrdersMessage, buildAlertsMessage } from './helpers/message.js';
-import { createOrder, getAllOrders, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts, getBoughtAddresses, getPendingLimitAddresses, getOpenOrdersByAddress, getOrderById, closeOrder, getOpenOrders } from './db.js';
+import { getAllOrders, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts, getBoughtAddresses, getPendingLimitAddresses, getOpenOrdersByAddress, getOrderById, closeOrder, getOpenOrders } from './db.js';
 import jupApi from './jupApi.js';
 import { monitorOrders } from './orderMonitor.js';
 import { formatMcap } from './helpers/format.js';
+import { trader } from './trader.js';
+import { isLiveMode, validateLiveConfig } from './config.js';
 
 // Setup validation
 const isTokenConfigured = SECRETS.TELEGRAM_BOT_TOKEN && 
@@ -263,43 +265,34 @@ bot.command('buy', async (ctx) => {
     }
   }
 
-  const statusMsg = await ctx.reply(`🛒 Processing buy order for token: \`${address}\` with capital $${buyAmount}...`);
+  const modeLabel = isLiveMode() ? 'LIVE' : 'Dry Run';
+  const statusMsg = await ctx.reply(`🛒 Processing ${modeLabel} buy for \`${address}\` with capital $${buyAmount}...`);
 
   try {
     const details = await jupApi.searchAsset(address);
     if (!details) {
-      await ctx.reply(`❌ Token not found on Jupiter with that contract address.`);
+      await ctx.reply('❌ Token not found on Jupiter with that contract address.');
       return;
     }
 
-    const priceUsd = details.usdPrice || 0;
-    const mcap = details.mcap || 0;
-    const symbol = details.symbol || 'N/A';
-    const name = details.name || 'N/A';
+    const result = await trader.executeBuy({ address, buyAmountUsd: buyAmount });
+    if (!result.ok) {
+      await ctx.reply(`❌ Buy failed: ${result.reason}`);
+      return;
+    }
 
-    // Calculate token quantity
-    const tokenQty = priceUsd > 0 ? (buyAmount / priceUsd) : 0;
-
-    // Insert to DB as dryrun
-    const orderId = createOrder({
-      address,
-      symbol,
-      name,
-      price_usd: priceUsd,
-      mcap,
-      type: 'dryrun',
-      buy_amount_usd: buyAmount,
-      token_qty: tokenQty
-    });
-
-    let successMsg = `✅ *Buy Record Success (Dry Run/Paper Trading)*\n\n`;
-    successMsg += `📦 *Order ID:* \`#${orderId}\`\n`;
-    successMsg += `🪙 *Token:* \`${symbol}\` (${name})\n`;
+    const o = result.order;
+    let successMsg = `✅ *Buy Record Success (${modeLabel})*\n\n`;
+    successMsg += `📦 *Order ID:* \`#${o.id}\`\n`;
+    successMsg += `🪙 *Token:* \`${details.symbol || 'N/A'}\` (${details.name || 'N/A'})\n`;
     successMsg += `🔗 *Address:* \`${address}\`\n`;
-    successMsg += `💵 *Initial Capital:* \`$${buyAmount.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
-    successMsg += `💰 *Entry Price:* \`$${priceUsd.toFixed(8)}\`\n`;
-    successMsg += `📊 *Market Cap:* \`$${formatMcap(mcap)}\`\n`;
-    successMsg += `🚦 *Type:* \`dryrun\`\n`;
+    successMsg += `💵 *Initial Capital:* \`$${buyAmount.toFixed(2)}\` (${o.token_qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
+    successMsg += `💰 *Entry Price:* \`$${o.price_usd.toFixed(8)}\`\n`;
+    successMsg += `📊 *Market Cap:* \`$${formatMcap(details.mcap || 0)}\`\n`;
+    successMsg += `🚦 *Mode:* \`${isLiveMode() ? 'live' : 'dryrun'}\`\n`;
+    if (o.signature) {
+      successMsg += `🔁 *Tx:* [solscan](https://solscan.io/tx/${o.signature})\n`;
+    }
     successMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
 
     await ctx.replyWithMarkdown(successMsg, { disable_web_page_preview: true });
