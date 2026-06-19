@@ -1,12 +1,11 @@
 import { Telegraf } from 'telegraf';
-import cron from 'node-cron';
 import fs from 'fs';
 import path from 'path';
 import { SECRETS, CONFIG } from './config.js';
 import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
 import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage, buildLimitOrdersMessage, buildAlertsMessage } from './helpers/message.js';
-import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts, getBoughtAddresses, getPendingLimitAddresses, getOpenOrdersByAddress, getOrderById, closeOrder, getOpenOrders } from './db.js';
+import { createOrder, getAllOrders, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts, getBoughtAddresses, getPendingLimitAddresses, getOpenOrdersByAddress, getOrderById, closeOrder, getOpenOrders } from './db.js';
 import jupApi from './jupApi.js';
 import { monitorOrders } from './orderMonitor.js';
 import { formatMcap } from './helpers/format.js';
@@ -712,11 +711,11 @@ setTimeout(async () => {
 
 // Start order monitor schedule
 console.log(`[Scheduler] Order monitor scheduled to run every ${CONFIG.cronOrderMonitorHours} hour(s)`);
-monitorOrders().catch(err => console.error('[Scheduler] Initial order monitor run failed:', err.message));
+monitorOrders(bot.telegram).catch(err => console.error('[Scheduler] Initial order monitor run failed:', err.message));
 
 setInterval(async () => {
   try {
-    await monitorOrders();
+    await monitorOrders(bot.telegram);
   } catch (err) {
     console.error('[Scheduler] Order monitoring cycle failed:', err.message);
   }

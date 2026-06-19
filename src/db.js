@@ -122,15 +122,6 @@ export function getAllOrders() {
 }
 
 /**
- * Fetches orders by token address.
- * @param {string} address
- * @returns {Array<Object>}
- */
-export function getOrdersByAddress(address) {
-  return db.prepare('SELECT * FROM orders WHERE address = ? ORDER BY created_at DESC').all();
-}
-
-/**
  * Updates current price, market cap, and checked timestamp for an order.
  * @param {number} id
  * @param {number} currentPriceUsd

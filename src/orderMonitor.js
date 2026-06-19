@@ -7,12 +7,13 @@ import { formatMcap } from './helpers/format.js';
 /**
  * Periodically updates the current prices and market caps of all orders in the database.
  * Executes once every hour (or as configured).
+ * @param {object} [telegram] Telegraf telegram client used to send alerts (e.g. bot.telegram).
  */
-export async function monitorOrders() {
+export async function monitorOrders(telegram = null) {
   console.log('[Order Monitor] Starting order price update check...');
-  
+
   // 1. Check/execute pending limit orders first
-  await checkLimitOrders();
+  await checkLimitOrders(telegram);
 
   // 2. Update prices for regular orders
   const orders = getOpenOrders();
@@ -36,9 +37,8 @@ export async function monitorOrders() {
 
           if (priceChangePct >= minTp && !order.tp_alerted) {
             console.log(`[Order Monitor] Take Profit met for ${order.symbol} (#${order.id}): ${priceChangePct.toFixed(2)}% >= ${minTp}%`);
-            
+
             const targetId = SECRETS.TELEGRAM_CHAT_ID;
-            const url = `https://api.telegram.org/bot${SECRETS.TELEGRAM_BOT_TOKEN}/sendMessage`;
             const modalUsd = order.buy_amount_usd || 0;
             const tokenQty = order.token_qty || 0;
             const currentValueUsd = tokenQty * currentPrice;
@@ -54,20 +54,17 @@ export async function monitorOrders() {
             alertMsg += `🟢 *PnL:* \`+${priceChangePct.toFixed(2)}%\` (\`+$${pnlUsd.toFixed(2)}\`)\n`;
             alertMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
 
-            await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                chat_id: targetId,
-                text: alertMsg,
-                parse_mode: 'Markdown'
-              })
-            })
-            .then(() => {
-              markOrderTpAlerted(order.id);
-              console.log(`[Order Monitor] Telegram take profit alert sent for ${order.symbol} (#${order.id})`);
-            })
-            .catch(err => console.error('[Order Monitor] Telegram notification failed:', err.message));
+            if (telegram) {
+              try {
+                await telegram.sendMessage(targetId, alertMsg, { parse_mode: 'Markdown' });
+                markOrderTpAlerted(order.id);
+                console.log(`[Order Monitor] Telegram take profit alert sent for ${order.symbol} (#${order.id})`);
+              } catch (err) {
+                console.error('[Order Monitor] Telegram notification failed:', err.message);
+              }
+            } else {
+              console.warn('[Order Monitor] No telegram client provided; skipping take profit alert.');
+            }
           }
         } else {
           console.warn(`[Order Monitor] Could not fetch details for ${order.symbol} (${order.address}).`);
@@ -88,8 +85,9 @@ export async function monitorOrders() {
 
 /**
  * Checks all pending limit orders and executes them if market cap drops below target.
+ * @param {object} [telegram] Telegraf telegram client used to send alerts (e.g. bot.telegram).
  */
-export async function checkLimitOrders() {
+export async function checkLimitOrders(telegram = null) {
   console.log('[Limit Order Monitor] Checking pending limit orders...');
   const pending = getPendingLimitOrders();
   if (pending.length === 0) {
@@ -136,7 +134,6 @@ export async function checkLimitOrders() {
 
         // 3. Send Telegram Alert
         const targetId = SECRETS.TELEGRAM_CHAT_ID;
-        const url = `https://api.telegram.org/bot${SECRETS.TELEGRAM_BOT_TOKEN}/sendMessage`;
 
         let alertMsg = `🎯 *Limit Buy Order Executed (Dry Run)*\n\n`;
         alertMsg += `📦 *Order ID:* \`#${newOrderId}\` (Limit Order \`#${order.id}\` executed)\n`;
@@ -148,15 +145,15 @@ export async function checkLimitOrders() {
         alertMsg += `🚦 *Type:* \`dryrun\`\n`;
         alertMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
 
-        await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: targetId,
-            text: alertMsg,
-            parse_mode: 'Markdown'
-          })
-        }).catch(err => console.error('[Limit Order Monitor] Telegram notification failed:', err.message));
+        if (telegram) {
+          try {
+            await telegram.sendMessage(targetId, alertMsg, { parse_mode: 'Markdown' });
+          } catch (err) {
+            console.error('[Limit Order Monitor] Telegram notification failed:', err.message);
+          }
+        } else {
+          console.warn('[Limit Order Monitor] No telegram client provided; skipping execution alert.');
+        }
 
         console.log(`[Limit Order Monitor] Order executed successfully. regular ID: #${newOrderId}`);
       }

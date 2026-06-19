@@ -3,7 +3,7 @@ import path from 'path';
 import { CONFIG } from './config.js';
 import { shouldAlertToken, markTokenAlerted } from './db.js';
 import jupApi from './jupApi.js';
-import { formatToWIB, hourDiff, dayjs } from './helpers/time.js';
+import { formatToWIB, dayjs } from './helpers/time.js';
 import { saveToCSV } from './helpers/csv.js';
 import { formatMcap } from './helpers/format.js';
 
