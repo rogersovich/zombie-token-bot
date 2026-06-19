@@ -6,7 +6,7 @@ import { SECRETS, CONFIG } from './config.js';
 import { runScreening, screenSingleToken } from './monitor.js';
 import { formatToWIB, getNextCronOccurrence, dayjs } from './helpers/time.js';
 import { buildSummaryMessage, buildSingleCheckMessage, buildPnLMessage, buildLimitOrdersMessage, buildAlertsMessage } from './helpers/message.js';
-import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts, getBoughtAddresses, getPendingLimitAddresses, getOpenOrdersByAddress, getOrderById, closeOrder } from './db.js';
+import { createOrder, getAllOrders, getOrdersByAddress, updateOrderPrice, createLimitOrder, getPendingLimitOrders, getLimitOrder, updateLimitOrderStatus, getAllAlerts, getBoughtAddresses, getPendingLimitAddresses, getOpenOrdersByAddress, getOrderById, closeOrder, getOpenOrders } from './db.js';
 import jupApi from './jupApi.js';
 import { monitorOrders } from './orderMonitor.js';
 import { formatMcap } from './helpers/format.js';
@@ -442,15 +442,15 @@ bot.command('pnl', async (ctx) => {
   try {
     let orders = [];
     if (address) {
-      orders = getOrdersByAddress(address);
+      orders = getOpenOrdersByAddress(address);
     } else {
-      orders = getAllOrders();
+      orders = getOpenOrders();
     }
 
     if (orders.length === 0) {
       await ctx.reply(address 
-        ? `❌ No orders recorded for contract address: \`${address}\``
-        : '📝 No orders recorded yet.'
+        ? `❌ No active orders found for contract address: \`${address}\``
+        : '📝 No active orders found.'
       );
       return;
     }
@@ -554,6 +554,7 @@ async function handleManualTakeProfit(ctx) {
       successMsg += `💵 *Initial Capital:* \`$${modalUsd.toFixed(2)}\` (${order.token_qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
       successMsg += `💰 *Entry Price:* \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${order.mcap ? formatMcap(order.mcap) : 'N/A'}\`)\n`;
       successMsg += `📈 *Sell Price:* \`$${sellPrice.toFixed(8)}\` (Mcap: \`$${sellMcap ? formatMcap(sellMcap) : 'N/A'}\`)\n`;
+      successMsg += `💵 *Realized Value (Total):* \`$${currentValueUsd.toFixed(2)}\`\n`;
       successMsg += `🟢 *Realized PnL:* \`${sign}${priceChangePct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)\n`;
       successMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
 
@@ -596,6 +597,7 @@ async function handleManualTakeProfit(ctx) {
         successMsg += `💵 *Initial Capital:* \`$${modalUsd.toFixed(2)}\` (${order.token_qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
         successMsg += `💰 *Entry Price:* \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${order.mcap ? formatMcap(order.mcap) : 'N/A'}\`)\n`;
         successMsg += `📈 *Sell Price:* \`$${sellPrice.toFixed(8)}\` (Mcap: \`$${sellMcap ? formatMcap(sellMcap) : 'N/A'}\`)\n`;
+        successMsg += `💵 *Realized Value (Total):* \`$${currentValueUsd.toFixed(2)}\`\n`;
         successMsg += `🟢 *Realized PnL:* \`${sign}${priceChangePct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(2)}\`)\n`;
         successMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
 
