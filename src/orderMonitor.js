@@ -36,45 +36,102 @@ export async function monitorOrders(telegram = null) {
           const priceChangePct = buyPrice > 0 ? ((currentPrice - buyPrice) / buyPrice) * 100 : 0;
           const minTp = CONFIG.minTakeProfitPercent ?? 50;
 
-          if (priceChangePct >= minTp && !order.tp_alerted) {
-            console.log(`[Order Monitor] Take Profit met for ${order.symbol} (#${order.id}): ${priceChangePct.toFixed(2)}% >= ${minTp}%`);
+          if (priceChangePct >= minTp) {
+            if (CONFIG.autoTakeProfit) {
+              console.log(`[Order Monitor] Auto Take Profit triggered for ${order.symbol} (#${order.id}): ${priceChangePct.toFixed(2)}% >= ${minTp}%`);
+              
+              const targetId = SECRETS.TELEGRAM_CHAT_ID;
+              const modalUsd = order.buy_amount_usd || 0;
+              const tokenQty = order.token_qty || 0;
 
-            const targetId = SECRETS.TELEGRAM_CHAT_ID;
-            const modalUsd = order.buy_amount_usd || 0;
-            const tokenQty = order.token_qty || 0;
-            const currentValueUsd = tokenQty * currentPrice;
-            const pnlUsd = currentValueUsd - modalUsd;
-
-            const tpModeLabel = isLiveMode() ? 'LIVE' : 'Dry Run';
-            let alertMsg = `🎯 *Take Profit Achieved! (${tpModeLabel})*\n\n`;
-            alertMsg += `📦 *Order ID:* \`#${order.id}\`\n`;
-            alertMsg += `🪙 *Token:* \`${order.symbol || 'N/A'}\` (${order.name || 'N/A'})\n`;
-            alertMsg += `🔗 *Address:* \`${order.address}\`\n`;
-            alertMsg += `💵 *Initial Capital:* \`$${modalUsd.toFixed(2)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 2 })} tokens)\n`;
-            alertMsg += `💰 *Entry Price:* \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${order.mcap ? formatMcap(order.mcap) : 'N/A'}\`)\n`;
-            alertMsg += `📈 *Current Price:* \`$${currentPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? formatMcap(currentMcap) : 'N/A'}\`)\n`;
-            alertMsg += `🟢 *PnL:* \`+${priceChangePct.toFixed(2)}%\` (\`+$${pnlUsd.toFixed(2)}\`)\n`;
-            alertMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n\n`;
-            alertMsg += `Tap *Sell Now* to close this order.`;
-
-            if (telegram) {
               try {
-                await telegram.sendMessage(targetId, alertMsg, {
-                  parse_mode: 'Markdown',
-                  reply_markup: {
-                    inline_keyboard: [[
-                      { text: '✅ Sell Now', callback_data: `sell_tp:${order.id}` },
-                      { text: '❌ Ignore', callback_data: `tp_ignore:${order.id}` },
-                    ]],
-                  },
+                const result = await trader.executeSell({
+                  orders: [order],
+                  currentPriceUsd: currentPrice,
+                  currentMcap: currentMcap
                 });
+
+                if (result.ok) {
+                  const r = result.results[0];
+                  const pnlUsd = r.realizedUsd - modalUsd;
+                  const pct = modalUsd > 0 ? (pnlUsd / modalUsd) * 100 : 0;
+                  const sign = pnlUsd >= 0 ? '+' : '';
+                  const tpModeLabel = isLiveMode() ? 'LIVE' : 'Dry Run';
+
+                  let autoMsg = `🎯 *Auto Take Profit Executed! (${tpModeLabel})*\n\n`;
+                  autoMsg += `📦 *Order ID:* \`#${order.id}\`\n`;
+                  autoMsg += `🪙 *Token:* \`${order.symbol || 'N/A'}\` (${order.name || 'N/A'})\n`;
+                  autoMsg += `🔗 *Address:* \`${order.address}\`\n`;
+                  autoMsg += `💵 *Initial Capital:* \`$${modalUsd.toFixed(4)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 4 })} tokens)\n`;
+                  autoMsg += `💰 *Entry Price:* \`$${buyPrice.toFixed(8)}\`\n`;
+                  autoMsg += `📈 *Sell Price:* \`$${r.sellPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? formatMcap(currentMcap) : 'N/A'}\`)\n`;
+                  autoMsg += `🟢 *PnL:* \`${sign}${pct.toFixed(2)}%\` (\`${sign}$${pnlUsd.toFixed(4)}\`)\n`;
+                  if (result.signature) {
+                    autoMsg += `🔁 *Tx:* [solscan](https://solscan.io/tx/${result.signature})\n`;
+                  }
+                  autoMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n`;
+
+                  if (telegram) {
+                    await telegram.sendMessage(targetId, autoMsg, { parse_mode: 'Markdown', disable_web_page_preview: true });
+                  }
+                  console.log(`[Order Monitor] Auto Take Profit executed successfully for ${order.symbol} (#${order.id})`);
+                } else {
+                  console.error(`[Order Monitor] Auto Take Profit execution failed for #${order.id}: ${result.reason}`);
+                  let failMsg = `⚠️ *Auto Take Profit Failed! (${isLiveMode() ? 'LIVE' : 'Dry Run'})*\n\n`;
+                  failMsg += `📦 *Order ID:* \`#${order.id}\`\n`;
+                  failMsg += `🪙 *Token:* \`${order.symbol || 'N/A'}\`\n`;
+                  failMsg += `❌ *Reason:* \`${result.reason || 'Unknown error'}\`\n\n`;
+                  failMsg += `The order remains open. You can close it manually using \`/sell ${order.id}\`.`;
+
+                  if (telegram) {
+                    await telegram.sendMessage(targetId, failMsg, { parse_mode: 'Markdown' });
+                  }
+                  markOrderTpAlerted(order.id);
+                }
+              } catch (sellErr) {
+                console.error(`[Order Monitor] Auto Take Profit execution error for #${order.id}:`, sellErr.message);
                 markOrderTpAlerted(order.id);
-                console.log(`[Order Monitor] Telegram take profit alert sent for ${order.symbol} (#${order.id})`);
-              } catch (err) {
-                console.error('[Order Monitor] Telegram notification failed:', err.message);
               }
-            } else {
-              console.warn('[Order Monitor] No telegram client provided; skipping take profit alert.');
+            } else if (!order.tp_alerted) {
+              console.log(`[Order Monitor] Take Profit met for ${order.symbol} (#${order.id}): ${priceChangePct.toFixed(2)}% >= ${minTp}%`);
+
+              const targetId = SECRETS.TELEGRAM_CHAT_ID;
+              const modalUsd = order.buy_amount_usd || 0;
+              const tokenQty = order.token_qty || 0;
+              const currentValueUsd = tokenQty * currentPrice;
+              const pnlUsd = currentValueUsd - modalUsd;
+
+              const tpModeLabel = isLiveMode() ? 'LIVE' : 'Dry Run';
+              let alertMsg = `🎯 *Take Profit Achieved! (${tpModeLabel})*\n\n`;
+              alertMsg += `📦 *Order ID:* \`#${order.id}\`\n`;
+              alertMsg += `🪙 *Token:* \`${order.symbol || 'N/A'}\` (${order.name || 'N/A'})\n`;
+              alertMsg += `🔗 *Address:* \`${order.address}\`\n`;
+              alertMsg += `💵 *Initial Capital:* \`$${modalUsd.toFixed(4)}\` (${tokenQty.toLocaleString(undefined, { maximumFractionDigits: 4 })} tokens)\n`;
+              alertMsg += `💰 *Entry Price:* \`$${buyPrice.toFixed(8)}\` (Mcap: \`$${order.mcap ? formatMcap(order.mcap) : 'N/A'}\`)\n`;
+              alertMsg += `📈 *Current Price:* \`$${currentPrice.toFixed(8)}\` (Mcap: \`$${currentMcap ? formatMcap(currentMcap) : 'N/A'}\`)\n`;
+              alertMsg += `🟢 *PnL:* \`+${priceChangePct.toFixed(2)}%\` (\`+$${pnlUsd.toFixed(4)}\`)\n`;
+              alertMsg += `📅 *Time:* \`${formatToWIB(Date.now())}\`\n\n`;
+              alertMsg += `Tap *Sell Now* to close this order.`;
+
+              if (telegram) {
+                try {
+                  await telegram.sendMessage(targetId, alertMsg, {
+                    parse_mode: 'Markdown',
+                    reply_markup: {
+                      inline_keyboard: [[
+                        { text: '✅ Sell Now', callback_data: `sell_tp:${order.id}` },
+                        { text: '❌ Ignore', callback_data: `tp_ignore:${order.id}` },
+                      ]],
+                    },
+                  });
+                  markOrderTpAlerted(order.id);
+                  console.log(`[Order Monitor] Telegram take profit alert sent for ${order.symbol} (#${order.id})`);
+                } catch (err) {
+                  console.error('[Order Monitor] Telegram notification failed:', err.message);
+                }
+              } else {
+                console.warn('[Order Monitor] No telegram client provided; skipping take profit alert.');
+              }
             }
           }
         } else {

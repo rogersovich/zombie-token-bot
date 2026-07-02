@@ -62,6 +62,7 @@ export const CONFIG = {
   cronOrderMonitorHours: Number(appConfig.cron_order_monitor_hours ?? 1),
   defaultBuyAmountUsd: Number(appConfig.default_buy_amount_usd ?? 5),
   minTakeProfitPercent: Number(appConfig.min_take_profit_percent ?? 50),
+  autoTakeProfit: !!(appConfig.auto_take_profit ?? false),
   maxBuyUsd: Number(appConfig.max_buy_usd ?? 10),
   minSolReserve: Number(appConfig.min_sol_reserve ?? 0.05),
   maxSlippageBps: Number(appConfig.max_slippage_bps ?? 300),
