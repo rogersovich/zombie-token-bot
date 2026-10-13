@@ -96,13 +96,39 @@ export async function swap({ inputMint, outputMint, amountLamports, slippageBps 
     const tx = VersionedTransaction.deserialize(Buffer.from(swapTransaction, 'base64'));
     tx.sign([wallet]);
 
-    // 5. Send
-    const signature = await connection.sendRawTransaction(tx.serialize(), { skipPreflight: false, maxRetries: 2 });
+    // 5. Send with retry loop
+    const rawTx = tx.serialize();
+    const signature = await connection.sendRawTransaction(rawTx, { skipPreflight: true, maxRetries: 0 });
 
-    // 6. Confirm
-    const conf = await connection.confirmTransaction(signature, 'confirmed');
-    if (conf.value && conf.value.err) {
-      return { ok: false, signature, reason: `Tx failed on-chain: ${JSON.stringify(conf.value.err)}` };
+    // 6. Confirm with retry loop (rebroadcast every 2s, timeout after 60s)
+    const startTime = Date.now();
+    let isConfirmed = false;
+    let onChainErr = null;
+
+    while (Date.now() - startTime < 60000) {
+      const status = await connection.getSignatureStatus(signature, { searchTransactionHistory: true });
+      if (status?.value) {
+        if (status.value.err) {
+          onChainErr = status.value.err;
+          break;
+        }
+        if (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized') {
+          isConfirmed = true;
+          break;
+        }
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Re-broadcast transaction to leaders
+      connection.sendRawTransaction(rawTx, { skipPreflight: true, maxRetries: 0 }).catch(() => {});
+    }
+
+    if (onChainErr) {
+      return { ok: false, signature, reason: `Tx failed on-chain: ${JSON.stringify(onChainErr)}` };
+    }
+
+    if (!isConfirmed) {
+      return { ok: false, signature, reason: `Transaction was not confirmed within 60s. Signature: ${signature}` };
     }
 
     return { ok: true, signature, inAmount: Number(quote.inAmount), outAmount: Number(quote.outAmount) };
