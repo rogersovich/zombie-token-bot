@@ -162,8 +162,6 @@ bot.start((ctx) => {
 });
 
 bot.command('status', (ctx) => {
-  const nextInfo = getNextCronOccurrence(CONFIG.cronScreenMinutes);
-
   let status = `⚙️ *Current Filter Configuration:*\n\n`;
   status += `• Min ATH Mcap: \`$${CONFIG.minAthMcap.toLocaleString()}\`\n`;
   status += `• Mcap Accumulation Range: \`$${CONFIG.minMcap.toLocaleString()}\` - \`$${CONFIG.maxMcap.toLocaleString()}\`\n`;
@@ -171,8 +169,13 @@ bot.command('status', (ctx) => {
   status += `• Min Holder Count: \`${CONFIG.minHolderCount.toLocaleString()}\`\n`;
   status += `• Min Token Age: \`${CONFIG.minTokenAgeDays} days\`\n`;
   status += `• Min Largest Buy (7D): \`$${CONFIG.minLargestBuyUsd.toLocaleString()}\`\n\n`;
-  status += `🕒 *Automated Schedule:* every \`${CONFIG.cronScreenMinutes} minutes\`\n`;
-  status += `⏳ *Next Run:* \`${nextInfo.nextRunTimeWIB}\` (in *${nextInfo.remainingStr}*)\n`;
+  if (CONFIG.enableScreening) {
+    const nextInfo = getNextCronOccurrence(CONFIG.cronScreenMinutes);
+    status += `🕒 *Automated Schedule:* every \`${CONFIG.cronScreenMinutes} minutes\`\n`;
+    status += `⏳ *Next Run:* \`${nextInfo.nextRunTimeWIB}\` (in *${nextInfo.remainingStr}*)\n`;
+  } else {
+    status += `🕒 *Automated Schedule:* \`🔴 Disabled (Manual only via /screen)\`\n`;
+  }
   ctx.replyWithMarkdown(status);
 });
 
@@ -689,27 +692,32 @@ console.log(`[Filter] Min Holders: ${CONFIG.minHolderCount.toLocaleString()}`);
 console.log(`[Filter] Min Token Age: ${CONFIG.minTokenAgeDays} days`);
 console.log('================================================================\n');
 
-// Calculate milliseconds remaining until the next aligned run
-const nextInfo = getNextCronOccurrence(CONFIG.cronScreenMinutes);
+if (CONFIG.enableScreening) {
+  // Calculate milliseconds remaining until the next aligned run
+  const nextInfo = getNextCronOccurrence(CONFIG.cronScreenMinutes);
 
-// Format nextRunTimeWIB back to a dayjs object to get difference
-const nextRunTime = dayjs(nextInfo.nextRunTimeWIB.replace(' WIB', ''), 'YYYY-MM-DD HH:mm:ss');
-const delayMs = nextRunTime.diff(dayjs());
+  // Format nextRunTimeWIB back to a dayjs object to get difference
+  const nextRunTime = dayjs(nextInfo.nextRunTimeWIB.replace(' WIB', ''), 'YYYY-MM-DD HH:mm:ss');
+  const delayMs = nextRunTime.diff(dayjs());
 
-console.log(`[Scheduler] Next run is aligned at ${nextInfo.nextRunTimeWIB}. Delaying first run by ${(delayMs / 1000).toFixed(0)} seconds...`);
+  console.log(`[Scheduler] Next run is aligned at ${nextInfo.nextRunTimeWIB}. Delaying first run by ${(delayMs / 1000).toFixed(0)} seconds...`);
 
-// First aligned run
-setTimeout(async () => {
-  console.log('[Scheduler] Running scheduled screening task (aligned)...');
-  await executeScreeningAndSend();
-  
-  // Set up recurring interval runs
-  setInterval(async () => {
-    console.log('[Scheduler] Running scheduled screening task (interval)...');
+  // First aligned run
+  setTimeout(async () => {
+    console.log('[Scheduler] Running scheduled screening task (aligned)...');
     await executeScreeningAndSend();
-  }, CONFIG.cronScreenMinutes * 60 * 1000);
+    
+    // Set up recurring interval runs
+    setInterval(async () => {
+      console.log('[Scheduler] Running scheduled screening task (interval)...');
+      await executeScreeningAndSend();
+    }, CONFIG.cronScreenMinutes * 60 * 1000);
 
-}, delayMs);
+  }, delayMs);
+} else {
+  console.log('[Scheduler] Automated token screening is DISABLED (enable_screening: false).');
+  console.log('[Scheduler] Screening can still be run on-demand via Telegram command /screen.');
+}
 
 // Start order monitor schedule
 console.log(`[Scheduler] Order monitor scheduled to run every ${CONFIG.cronOrderMonitorHours} hour(s)`);

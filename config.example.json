@@ -14,5 +14,6 @@
   "max_buy_usd": 10,
   "min_sol_reserve": 0.05,
   "max_slippage_bps": 300,
-  "priority_fee_lamports": 100000
+  "priority_fee_lamports": 100000,
+  "enable_screening": true
 }

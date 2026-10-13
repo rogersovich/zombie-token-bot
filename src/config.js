@@ -67,6 +67,7 @@ export const CONFIG = {
   minSolReserve: Number(appConfig.min_sol_reserve ?? 0.05),
   maxSlippageBps: Number(appConfig.max_slippage_bps ?? 300),
   priorityFeeLamports: Number(appConfig.priority_fee_lamports ?? 100000),
+  enableScreening: Boolean(appConfig.enable_screening ?? true),
 };
 
 /**
